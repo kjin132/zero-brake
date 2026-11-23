@@ -15,4 +15,4 @@ void Game_Draw(Game& g);                 // 매 프레임 그리기
 void Game_StartRace(Game& g);            // 선택 화면 → 카운트다운 (차량·트랙 생성)
 
 // 3D 세계 한 번 그리기 — 뷰포트(메인/미러/미니맵)마다 Viewports 가 호출
-void World_Draw(const Game& g, const CameraView& cam);
+void World_Draw(const Game& g, const CameraView& cam, bool drawPlayer = true);

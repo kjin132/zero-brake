@@ -3,7 +3,7 @@
 //  - 조절점(kMap0/kMap1)을 Catmull-Rom 곡선으로 이어 중심선을 만들고,
 //    각 점의 좌우(수직 방향)로 도로 폭/2 만큼 벌려 도로 메시를 생성
 //  - 조절점 순서 = 주행 방향, [0] 근처가 출발선
-//  TODO(현조): 두 맵 모양 다듬기, 도로 폭, 체크포인트 개수, 부스트 패드·장애물 배치
+//  고속/테크니컬 도로, 16개 체크포인트, 패드와 장애물을 생성한다.
 // =====================================================================================
 #include "world/Track.h"
 #include "core/Mesh.h"
@@ -23,7 +23,7 @@ static const glm::vec2 kMap1[] = {
 };
 
 static const float kRoadWidth[2] = { 16.0f, 12.0f };
-static const int kCheckpointCount = 8;
+static const int kCheckpointCount = 16;
 
 static Mesh sRoad, sCurbL, sCurbR;
 
@@ -97,6 +97,13 @@ void Track_Build(Track& t, int mapId)
 	t.boostPads.push_back(t.center[n / 12]);
 	t.boostPads.push_back(t.center[n / 2 + n / 12]);
 
+	// 직선의 한쪽 차선에 작은 방호 블록을 배치한다. 중앙 주행선은 비워둔다.
+	for (int idx : { n / 10, n / 2 + n / 10 })
+	{
+		glm::vec3 tg = TangentAt(t, idx), side(-tg.z, 0, tg.x);
+		t.obstacles.push_back({ t.center[idx] + side * (t.roadWidth * 0.30f), {1.4f, 1.0f, 1.4f} });
+	}
+
 	Mesh_Destroy(sRoad); Mesh_Destroy(sCurbL); Mesh_Destroy(sCurbR);
 	float hw = t.roadWidth * 0.5f;
 	sRoad = BuildStrip(t, -hw, hw, 0.02f, t.roadWidth);
@@ -123,6 +130,23 @@ void Track_Draw(const Track& t)
 		DrawOpt fin; fin.texture = Texture_Get(TexId::Checker);
 		Draw_Mesh(gQuad, m, fin);
 	}
+
+	// 점선 중앙 차선과 출발선 아치로 진행 방향을 읽기 쉽게 한다.
+	for (int i = 0; i < (int)t.center.size(); i += 5)
+	{
+		glm::vec3 tg = TangentAt(t, i);
+		glm::mat4 m = glm::translate(glm::mat4(1), t.center[i] + glm::vec3(0, 0.045f, 0));
+		m = glm::rotate(m, std::atan2(tg.x, tg.z), glm::vec3(0,1,0));
+		Draw_Box(m, {0,0,0}, {0.16f,0.015f,1.8f}, glm::vec4(0.95f,0.87f,0.45f,1));
+	}
+	glm::mat4 gate = glm::rotate(glm::translate(glm::mat4(1), t.startPos), t.startYaw, glm::vec3(0,1,0));
+	float post = t.roadWidth * 0.5f + 1.4f;
+	Draw_Box(gate, {-post,3.0f,0}, {0.8f,6.0f,0.8f}, glm::vec4(0.18f,0.23f,0.3f,1));
+	Draw_Box(gate, {post,3.0f,0}, {0.8f,6.0f,0.8f}, glm::vec4(0.18f,0.23f,0.3f,1));
+	Draw_Box(gate, {0,6.0f,0}, {post*2+0.8f,0.9f,0.7f}, glm::vec4(0.12f,0.16f,0.22f,1));
+	for (int i = -3; i <= 3; ++i)
+		Draw_Box(gate, {(float)i*1.2f,6.0f,-0.38f}, {0.6f,0.55f,0.08f},
+			i % 2 == 0 ? glm::vec4(1) : glm::vec4(0.1f,0.8f,1,1));
 
 	// 부스트 패드
 	for (const glm::vec3& p : t.boostPads)

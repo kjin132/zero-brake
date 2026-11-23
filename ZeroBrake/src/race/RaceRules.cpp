@@ -1,130 +1,134 @@
-﻿// =====================================================================================
-//  [담당: 진우석] 경기 규칙
-//  - 체크포인트는 순서대로 + 정해진 방향으로 지나가야 인정 (역주행·지름길 방지)
-//  - checkpoints[0] = 출발·결승선. 0번을 지나면 1바퀴 완료
-//  - 순위 = (완료 바퀴, 통과한 체크포인트 수, 다음 체크포인트까지 거리) 순
-//  TODO(우석): 제한 시간 값, 완주 후 처리, 복귀 위치 안전 검사
-// =====================================================================================
+﻿// 순서/방향/게이트 교차점을 검사하며 출발선 첫 통과와 랩 완주를 구분한다.
 #include "race/RaceRules.h"
 #include "race/Ghost.h"
 #include "vehicle/CarAbility.h"
+#include "vehicle/CarSpecs.h"
+#include "world/Track.h"
 
-static float sPrevSide[MAX_CARS];   // 직전 프레임에 다음 체크포인트 평면의 어느 쪽이었는지
-
+static glm::vec3 sPrevious[MAX_CARS];
 static float SideOf(const Checkpoint& cp, glm::vec3 p) { return glm::dot(p - cp.pos, cp.forward); }
-
-static bool IsWithinGate(const Checkpoint& cp, glm::vec3 p)
+static bool Crossed(const Checkpoint& cp, glm::vec3 from, glm::vec3 to)
 {
-	glm::vec3 right = glm::normalize(glm::cross(cp.forward, glm::vec3(0, 1, 0)));
-	return std::fabs(glm::dot(p - cp.pos, right)) <= cp.halfWidth + 1.0f;
+	float a = SideOf(cp, from), b = SideOf(cp, to);
+	if (a >= 0.0f || b < 0.0f) return false;
+	glm::vec3 crossing = glm::mix(from, to, -a / (b - a));
+	glm::vec3 side(-cp.forward.z, 0, cp.forward.x);
+	return std::fabs(glm::dot(crossing - cp.pos, side)) <= cp.halfWidth;
 }
-
-// 순위 계산용 진행도
 static float Progress(const Track& t, const Car& c)
 {
+	if (!c.startedLap) return -glm::length(c.pos - t.startPos) * 0.001f;
 	int n = (int)t.checkpoints.size();
-	int passed = (c.nextCheckpoint - 1 + n) % n;        // 이번 바퀴에 지난 체크포인트 수
-	if (c.nextCheckpoint == 0) passed = n - 1;
-	float distToNext = glm::length(t.checkpoints[c.nextCheckpoint].pos - c.pos);
-	return c.lap * 1000.0f + passed * 10.0f - distToNext * 0.001f;
+	int passed = c.nextCheckpoint == 0 ? n - 1 : c.nextCheckpoint - 1;
+	return c.lap * 1000.0f + passed * 10.0f - glm::length(t.checkpoints[c.nextCheckpoint].pos - c.pos) * 0.001f;
 }
-
 void RaceRules_Start(Game& g)
 {
-	for (int i = 0; i < g.carCount; i++)
+	for (int i = 0; i < g.carCount; ++i)
 	{
-		g.cars[i].lap = 0;
-		g.cars[i].nextCheckpoint = (int)g.track.checkpoints.size() > 1 ? 1 : 0;
-		g.cars[i].finished = false;
-		sPrevSide[i] = SideOf(g.track.checkpoints[g.cars[i].nextCheckpoint], g.cars[i].pos);
+		Car& c = g.cars[i];
+		c.lap = 0; c.nextCheckpoint = 0; c.finished = false; c.startedLap = false;
+		c.finishTime = 0; c.boostPadIndex = -1;
+		sPrevious[i] = c.pos;
 	}
 	g.race = RaceInfo();
 }
-
-static void OnCheckpoint(Game& g, int carIndex)
+static void OnCheckpoint(Game& g, int index)
 {
-	Car& c = g.cars[carIndex];
-	const Track& t = g.track;
-	int n = (int)t.checkpoints.size();
-	int passedIndex = c.nextCheckpoint;
-
-	c.safePos = t.checkpoints[passedIndex].pos;
-	c.safeYaw = std::atan2(t.checkpoints[passedIndex].forward.x, t.checkpoints[passedIndex].forward.z);
-
-	if (passedIndex == 0)     // 결승선 → 1바퀴 완료
+	Car& c = g.cars[index];
+	int passed = c.nextCheckpoint;
+	const Checkpoint& cp = g.track.checkpoints[passed];
+	c.safePos = cp.pos + cp.forward * 2.5f;
+	c.safeYaw = std::atan2(cp.forward.x, cp.forward.z);
+	if (passed == 0)
 	{
-		c.lap++;
-		if (c.isPlayer)
+		if (!c.startedLap)
 		{
-			float lapTime = g.race.time - g.race.lapStartTime;
-			g.race.lastLap = lapTime;
-			if (g.race.bestLap == 0.0f || lapTime < g.race.bestLap) g.race.bestLap = lapTime;
-			g.race.lapStartTime = g.race.time;
-			Ghost_OnPlayerLap(g, lapTime);
+			c.startedLap = true;
+			if (c.isPlayer) { g.race.lapStartTime = g.race.time; Ghost_BeginLap(g); }
 		}
-		if (c.lap >= g.settings.laps)
+		else
 		{
-			c.finished = true;
-			c.finishTime = g.race.time;
-			if (c.isPlayer) g.race.playerFinished = true;
+			++c.lap;
+			if (c.isPlayer)
+			{
+				float time = g.race.time - g.race.lapStartTime;
+				g.race.lastLap = time;
+				if (g.race.bestLap == 0 || time < g.race.bestLap) g.race.bestLap = time;
+				Ghost_OnPlayerLap(g, time);
+				g.race.lapStartTime = g.race.time;
+			}
+			if (c.lap >= g.settings.laps)
+			{
+				c.finished = true; c.finishTime = g.race.time;
+				if (c.isPlayer) g.race.playerFinished = true;
+			}
 		}
 	}
-	c.nextCheckpoint = (passedIndex + 1) % n;
-	sPrevSide[carIndex] = SideOf(t.checkpoints[c.nextCheckpoint], c.pos);
+	c.nextCheckpoint = (passed + 1) % (int)g.track.checkpoints.size();
 }
-
 void RaceRules_Update(Game& g, float dt)
 {
 	g.race.time += dt;
-	if (g.race.time >= g.settings.timeLimit) g.race.timeOver = true;
-
 	const Track& t = g.track;
-	for (int i = 0; i < g.carCount; i++)
+	if (t.checkpoints.empty()) return;
+	for (int i = 0; i < g.carCount; ++i)
 	{
 		Car& c = g.cars[i];
 		if (!c.active || c.finished) continue;
-
-		// 체크포인트 통과: 평면의 뒤(-)에서 앞(+)으로 넘어가고, 도로 폭 안일 때
-		const Checkpoint& cp = t.checkpoints[c.nextCheckpoint];
-		float side = SideOf(cp, c.pos);
-		if (sPrevSide[i] < 0.0f && side >= 0.0f && IsWithinGate(cp, c.pos))
-			OnCheckpoint(g, i);
-		else
-			sPrevSide[i] = side;
-
-		// 부스트 패드
-		for (const glm::vec3& pad : t.boostPads)
-			if (glm::length(glm::vec2(c.pos.x - pad.x, c.pos.z - pad.z)) < 2.5f)
-				CarAbility_OnBoostPad(c);
-	}
-
-	// 순위
-	for (int i = 0; i < g.carCount; i++)
-	{
-		int rank = 1;
-		float pi = g.cars[i].finished ? 1e6f - g.cars[i].finishTime : Progress(t, g.cars[i]);
-		for (int j = 0; j < g.carCount; j++)
+		if (Crossed(t.checkpoints[c.nextCheckpoint], sPrevious[i], c.pos)) OnCheckpoint(g, i);
+		sPrevious[i] = c.pos;
+		int padIndex = -1;
+		for (int p = 0; p < (int)t.boostPads.size(); ++p)
 		{
-			if (i == j) continue;
-			float pj = g.cars[j].finished ? 1e6f - g.cars[j].finishTime : Progress(t, g.cars[j]);
-			if (pj > pi) rank++;
+			glm::vec3 d = c.pos - t.boostPads[p]; d.y = 0;
+			if (glm::length(d) < 2.5f) { padIndex = p; break; }
 		}
-		g.cars[i].rank = rank;
+		if (padIndex >= 0 && padIndex != c.boostPadIndex && c.speed > 0.0f) CarAbility_OnBoostPad(c);
+		c.boostPadIndex = padIndex;
 	}
+	for (int i = 0; i < g.carCount; ++i)
+	{
+		Car& a = g.cars[i]; if (!a.active) continue;
+		a.rank = 1;
+		float pa = a.finished ? 1e6f - a.finishTime : Progress(t, a);
+		for (int j = 0; j < g.carCount; ++j)
+		{
+			const Car& b = g.cars[j]; if (i == j || !b.active) continue;
+			float pb = b.finished ? 1e6f - b.finishTime : Progress(t, b);
+			if (pb > pa || (pb == pa && j < i)) ++a.rank;
+		}
+	}
+	// 제한 시각과 같은 스텝에 결승선을 통과해도 제한 초과를 성공으로 표시하지 않는다.
+	if (g.race.time > g.settings.timeLimit) { g.race.timeOver = true; g.race.playerFinished = false; }
 }
-
-void RaceRules_Respawn(Game& g, Car& car)
+void RaceRules_Respawn(Game& g, Car& c)
 {
-	car.pos = car.safePos;
-	car.yaw = car.safeYaw;
-	car.speed = 0.0f;
-	car.slipAngle = 0.0f;
-	for (int i = 0; i < g.carCount; i++)
-		if (&g.cars[i] == &car)
-			sPrevSide[i] = SideOf(g.track.checkpoints[car.nextCheckpoint], car.pos);
+	glm::vec3 fwd(std::sin(c.safeYaw), 0, std::cos(c.safeYaw));
+	glm::vec3 side(-fwd.z, 0, fwd.x);
+	glm::vec3 candidate = c.safePos;
+	bool found = false;
+	// 복귀 지점을 다른 차/장애물과 겹치지 않는 도로 위에서 찾는다.
+	for (int row = 0; row < 6 && !found; ++row)
+		for (int lane = 0; lane < 3 && !found; ++lane)
+		{
+			float lateral = lane == 0 ? 0.0f : (lane == 1 ? -2.5f : 2.5f);
+			glm::vec3 p = c.safePos + fwd * (row * 5.5f) + side * lateral;
+			// 복귀 검색이 다음 체크포인트를 건너뛰지 않도록 한다.
+			if (!g.track.checkpoints.empty() && SideOf(g.track.checkpoints[c.nextCheckpoint], p) >= -0.5f) continue;
+			if (Track_DistanceFromCenter(g.track, p, nullptr, nullptr) > g.track.roadWidth * 0.5f - 2.5f) continue;
+			bool blocked = false;
+			for (int i = 0; i < g.carCount; ++i)
+				if (&g.cars[i] != &c && g.cars[i].active && glm::length(g.cars[i].pos - p) < 5.2f) blocked = true;
+			for (const Obstacle& o : g.track.obstacles)
+				if (std::fabs(p.x - o.pos.x) < o.size.x * 0.5f + 2.5f &&
+					std::fabs(p.z - o.pos.z) < o.size.z * 0.5f + 2.5f) blocked = true;
+			if (!blocked) { candidate = p; found = true; }
+		}
+	if (!found) return; // 빈자리가 없으면 기존 위치를 유지한다.
+	c.pos = candidate; c.yaw = c.safeYaw; c.speed = 0; c.slipAngle = 0; c.steerAngle = 0;
+	c.handbrakeOn = false; c.boostTime = 0; c.padBoostTime = 0;
+	for (int i = 0; i < g.carCount; ++i) if (&g.cars[i] == &c) sPrevious[i] = c.pos;
+	if (c.isPlayer) Ghost_InvalidateLap();
 }
-
-bool RaceRules_IsOver(const Game& g)
-{
-	return g.race.playerFinished || g.race.timeOver;
-}
+bool RaceRules_IsOver(const Game& g) { return g.race.playerFinished || g.race.timeOver; }

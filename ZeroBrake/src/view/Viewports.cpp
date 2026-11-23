@@ -24,7 +24,7 @@ void Viewports_Draw(const Game& g)
 {
 	// ① 메인 화면
 	glViewport(0, 0, gWidth, gHeight);
-	World_Draw(g, Camera_Main(g, (float)gWidth / gHeight));
+	World_Draw(g, Camera_Main(g, (float)gWidth / gHeight), g.viewMode != ViewMode::FirstPerson);
 
 	// ② 후방 미러 (위쪽 가운데)
 	int mw = gWidth * 30 / 100, mh = gHeight * 12 / 100;

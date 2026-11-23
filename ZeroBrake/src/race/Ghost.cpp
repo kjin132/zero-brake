@@ -1,89 +1,132 @@
-﻿// =====================================================================================
-//  [담당: 진우석 주담당 / 유현조 렌더링 연동]
-//  - 랩 동안 0.05초마다 (시간, 위치, 방향)을 저장 → 최고 랩이면 고스트 기록으로 교체
-//  - 다음 랩에서 랩 경과 시간에 맞춰 두 샘플 사이를 보간해서 재생
-//  - 고스트는 충돌·순위 계산에 넣지 않음
-//  TODO(우석): 파일 저장(save/), 맵·차종별 기록 분리
-// =====================================================================================
+﻿// 맵/차종별 최고 랩을 저장하고 다음 경기에도 같은 시간축으로 재생한다.
 #include "race/Ghost.h"
 #include "vehicle/CarModel.h"
+#include <array>
+#include <filesystem>
+#include <fstream>
 
-struct GhostSample { float t; glm::vec3 pos; float yaw; };
-
-static std::vector<GhostSample> sRecording;   // 이번 랩 기록 중
-static std::vector<GhostSample> sBest;        // 최고 랩 기록
-static float sBestTime = 0.0f;
-static float sSampleTimer = 0.0f;
-static int sMapId = -1;
-static CarType sCarType = CarType::Balance;
-
-static bool sVisible = false;
-static glm::vec3 sPos;
-static float sYaw = 0.0f;
-
+namespace
+{
+struct Sample { float t; glm::vec3 pos; float yaw; };
+struct Record { float time = 0; std::vector<Sample> samples; };
+std::array<Record, 6> sRecords;
+std::vector<Sample> sRecording;
+int sKey = 0;
+bool sLoaded = false, sVisible = false, sValid = true;
+float sSampleTimer = 0, sYaw = 0;
+glm::vec3 sPos;
+int Key(int map, CarType type) { return glm::clamp(map, 0, 1) * 3 + glm::clamp((int)type, 0, 2); }
+std::filesystem::path SavePath(int key)
+{
+	// 실행 위치가 Debug/Release/IDE 중 어디든 같은 프로젝트 save 폴더를 사용한다.
+	std::error_code ec;
+	auto path = std::filesystem::current_path(ec);
+	if (ec) return {};
+	if (std::filesystem::exists(path / "ZeroBrake.sln", ec)) {}
+	else if (std::filesystem::exists(path / "src", ec)) path = path.parent_path();
+	else if (path.parent_path().filename() == "build") path = path.parent_path().parent_path();
+	return path / "save" / ("ghost_" + std::to_string(key) + ".txt");
+}
+bool Finite(const Sample& s)
+{
+	return std::isfinite(s.t) && std::isfinite(s.pos.x) && std::isfinite(s.pos.y) &&
+		std::isfinite(s.pos.z) && std::isfinite(s.yaw) && glm::length(s.pos) < 10000.0f;
+}
+void Load()
+{
+	if (sLoaded) return;
+	sLoaded = true;
+	for (int key = 0; key < 6; ++key)
+	{
+		std::ifstream in(SavePath(key));
+		std::string version; int fileKey; size_t count; Record r;
+		if (!(in >> version >> fileKey >> r.time >> count) || version != "ZB_GHOST_1" ||
+			fileKey != key || !std::isfinite(r.time) || r.time <= 0 || r.time > 3600 || count < 2 || count > 100000) continue;
+		bool valid = true;
+		for (size_t i = 0; i < count; ++i)
+		{
+			Sample s;
+			if (!(in >> s.t >> s.pos.x >> s.pos.y >> s.pos.z >> s.yaw) || !Finite(s) ||
+				s.t < 0 || s.t > r.time + 0.001f || (i && s.t <= r.samples.back().t)) { valid = false; break; }
+			r.samples.push_back(s);
+		}
+		if (valid && r.samples.front().t == 0 && std::fabs(r.samples.back().t - r.time) < 0.001f)
+			sRecords[key] = std::move(r);
+	}
+}
+void Save(int key)
+{
+	const Record& r = sRecords[key];
+	auto path = SavePath(key); if (path.empty()) return;
+	std::error_code ec; std::filesystem::create_directories(path.parent_path(), ec);
+	if (ec) return;
+	auto temporary = path; temporary += ".tmp";
+	{
+		std::ofstream out(temporary); if (!out) return;
+		out.precision(9);
+		out << "ZB_GHOST_1 " << key << ' ' << r.time << ' ' << r.samples.size() << '\n';
+		for (const Sample& s : r.samples)
+			out << s.t << ' ' << s.pos.x << ' ' << s.pos.y << ' ' << s.pos.z << ' ' << s.yaw << '\n';
+		out.flush(); if (!out) return;
+	}
+	// Windows의 기존 파일 rename 제약을 피하고 완성된 임시 파일을 복사한다.
+	std::filesystem::copy_file(temporary, path, std::filesystem::copy_options::overwrite_existing, ec);
+	if (!ec) std::filesystem::remove(temporary, ec);
+}
+}
+float Ghost_BestTime(int mapId, CarType type) { Load(); return sRecords[Key(mapId, type)].time; }
 void Ghost_StartRace(Game& g)
 {
-	// 맵이나 차종이 바뀌면 예전 기록은 쓰지 않음
-	if (sMapId != g.settings.mapId || sCarType != g.settings.playerCar)
-	{
-		sBest.clear();
-		sBestTime = 0.0f;
-		sMapId = g.settings.mapId;
-		sCarType = g.settings.playerCar;
-	}
-	sRecording.clear();
-	sSampleTimer = 0.0f;
-	sVisible = false;
+	Load(); sKey = Key(g.settings.mapId, g.settings.playerCar);
+	sRecording.clear(); sVisible = false; sSampleTimer = 0; sValid = true;
 }
-
+void Ghost_BeginLap(const Game& g)
+{
+	sRecording.clear(); sRecording.push_back({ 0, g.cars[0].pos, g.cars[0].yaw });
+	sSampleTimer = 0; sValid = true;
+}
+void Ghost_InvalidateLap() { sValid = false; }
 void Ghost_Update(Game& g, float dt)
 {
 	const Car& p = g.cars[0];
-	float lapT = g.race.time - g.race.lapStartTime;
-
-	// 기록
-	sSampleTimer += dt;
-	if (sSampleTimer >= 0.05f)
-	{
-		sSampleTimer = 0.0f;
-		sRecording.push_back({ lapT, p.pos, p.yaw });
-	}
-
-	// 재생 위치 계산
+	float t = g.race.time - g.race.lapStartTime;
 	sVisible = false;
-	if (sBest.size() < 2 || lapT > sBest.back().t) return;
-	for (size_t i = 0; i + 1 < sBest.size(); i++)
+	if (!p.startedLap || p.finished) return;
+	sSampleTimer += dt;
+	if (sValid && sSampleTimer >= 0.05f && !sRecording.empty() && t > sRecording.back().t)
 	{
-		if (sBest[i + 1].t >= lapT)
-		{
-			float k = (lapT - sBest[i].t) / std::max(0.0001f, sBest[i + 1].t - sBest[i].t);
-			sPos = glm::mix(sBest[i].pos, sBest[i + 1].pos, k);
-			float dy = sBest[i + 1].yaw - sBest[i].yaw;
-			while (dy > PI) dy -= 2 * PI;
-			while (dy < -PI) dy += 2 * PI;
-			sYaw = sBest[i].yaw + dy * k;
-			sVisible = true;
-			break;
-		}
+		sSampleTimer = std::fmod(sSampleTimer, 0.05f);
+		sRecording.push_back({ t, p.pos, p.yaw });
 	}
+	const auto& best = sRecords[sKey].samples;
+	if (best.size() < 2 || t > best.back().t) return;
+	auto next = std::upper_bound(best.begin(), best.end(), t, [](float time, const Sample& s) { return time < s.t; });
+	if (next == best.begin()) return;
+	if (next == best.end()) --next;
+	const Sample& a = *(next - 1); const Sample& b = *next;
+	float k = glm::clamp((t - a.t) / std::max(0.0001f, b.t - a.t), 0.0f, 1.0f);
+	sPos = glm::mix(a.pos, b.pos, k);
+	float dy = std::remainder(b.yaw - a.yaw, 2 * PI);
+	sYaw = a.yaw + dy * k; sVisible = true;
 }
-
 void Ghost_OnPlayerLap(Game& g, float lapTime)
 {
-	if (sBestTime == 0.0f || lapTime < sBestTime)
+	if (sValid && !sRecording.empty() && lapTime > sRecording.back().t && g.race.time <= g.settings.timeLimit)
 	{
-		sBest = sRecording;
-		sBestTime = lapTime;
+		sRecording.push_back({ lapTime, g.cars[0].pos, g.cars[0].yaw });
+		Record& best = sRecords[sKey];
+		if (best.time == 0 || lapTime < best.time)
+		{
+			best.time = lapTime; best.samples = sRecording; Save(sKey);
+		}
 	}
-	sRecording.clear();
-	sSampleTimer = 0.0f;
+	Ghost_BeginLap(g);
 }
-
 void Ghost_Draw(const Game& g)
 {
 	if (!sVisible) return;
 	glm::mat4 m = glm::rotate(glm::translate(glm::mat4(1.0f), sPos), sYaw, glm::vec3(0, 1, 0));
-	glDepthMask(GL_FALSE);                       // 반투명: 깊이 버퍼에 쓰지 않음
-	CarModel_DrawAt(g.settings.playerCar, m, 0.0f, 0.0f, 0.35f);
+	glDepthMask(GL_FALSE);
+	CarModel_DrawAt(g.settings.playerCar, m, 0, 0, 0.3f);
 	glDepthMask(GL_TRUE);
 }

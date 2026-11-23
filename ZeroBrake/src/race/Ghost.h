@@ -2,7 +2,10 @@
 #pragma once
 #include "core/GameTypes.h"
 
-void Ghost_StartRace(Game& g);                    // 출발 시 (맵·차종이 바뀌면 기록 초기화)
+void Ghost_StartRace(Game& g);
+void Ghost_BeginLap(const Game& g);
+void Ghost_InvalidateLap();
+float Ghost_BestTime(int mapId, CarType type);                    // 출발 시 현재 맵/차종의 저장 기록 선택
 void Ghost_Update(Game& g, float dt);             // 매 프레임: 현재 랩 기록 + 고스트 위치 계산
 void Ghost_OnPlayerLap(Game& g, float lapTime);   // 플레이어 1바퀴 완료 (RaceRules 가 호출)
 void Ghost_Draw(const Game& g);                   // 반투명으로 그리기 (World_Draw 맨 마지막)

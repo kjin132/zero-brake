@@ -83,6 +83,10 @@ static CarInput ReadPlayerInput()
 // 주행 한 프레임 (Race 상태)
 static void UpdateRace(Game& g, float dt)
 {
+	const int steps = std::max(1, (int)std::ceil(dt * 120.0f));
+	const float step = dt / steps;
+	for (int sub = 0; sub < steps; ++sub)
+	{
 	// 1) 차량 이동
 	for (int i = 0; i < g.carCount; i++)
 	{
@@ -91,21 +95,23 @@ static void UpdateRace(Game& g, float dt)
 		CarInput in;
 		if (c.finished) in.brake = 1.0f;                 // 완주한 차는 멈춤
 		else if (c.isPlayer) in = ReadPlayerInput();
-		else in = AIDriver_Think(g, c, dt);              // [우석]
-		CarAbility_Update(c, in, dt);                    // [현조] 핸드브레이크·부스트
-		CarPhysics_Update(c, in, dt);                    // [우석] 가속·조향·바퀴 회전
+		else in = AIDriver_Think(g, c, step);              // [우석]
+		CarAbility_Update(c, in, step);                    // [현조] 핸드브레이크·부스트
+		CarPhysics_Update(c, in, step);                    // [우석] 가속·조향·바퀴 회전
 	}
 	// 2) 충돌 보정 [우석]
 	Collision_Update(g);
 	// 3) 체크포인트·랩·순위·제한 시간 [우석]
-	RaceRules_Update(g, dt);
+	RaceRules_Update(g, step);
 	// 4) 고스트 기록·재생 [우석]
-	Ghost_Update(g, dt);
+	Ghost_Update(g, step);
+		if (RaceRules_IsOver(g)) break;
+	}
 	// 5) 카메라 [현조]
 	Camera_Update(g, dt);
 
 	// 6) 키 입력 (공통 단축키)
-	if (Input_Pressed(GLFW_KEY_R)) RaceRules_Respawn(g, g.cars[0]);
+	if (Input_Pressed(GLFW_KEY_R)) { RaceRules_Respawn(g, g.cars[0]); Camera_Reset(g); }
 	if (Input_Pressed(GLFW_KEY_C)) g.viewMode = (g.viewMode == ViewMode::Chase) ? ViewMode::FirstPerson : ViewMode::Chase;
 	if (Input_Pressed(GLFW_KEY_M)) g.showMinimap = !g.showMinimap;
 	if (Input_Pressed(GLFW_KEY_P)) g.state = GameState::Pause;
@@ -145,7 +151,7 @@ void Game_Update(Game& g, float dt)
 }
 
 // ---------------------------------------------------------------- 3D 세계 그리기
-void World_Draw(const Game& g, const CameraView& cam)
+void World_Draw(const Game& g, const CameraView& cam, bool drawPlayer)
 {
 	Shader_SetMat4("view", cam.view);
 	Shader_SetMat4("projection", cam.proj);
@@ -154,7 +160,7 @@ void World_Draw(const Game& g, const CameraView& cam)
 	Scenery_Draw();                                      // [현조]
 	Track_Draw(g.track);                                 // [현조]
 	for (int i = 0; i < g.carCount; i++)
-		if (g.cars[i].active) CarModel_Draw(g.cars[i]);  // [현조] 외형, 바퀴 각도는 [우석] 값 사용
+		if (g.cars[i].active && (drawPlayer || i != 0)) CarModel_Draw(g.cars[i]);  // [현조] 외형, 바퀴 각도는 [우석] 값 사용
 	Ghost_Draw(g);                                       // 반투명은 맨 마지막 [우석·현조]
 }
 

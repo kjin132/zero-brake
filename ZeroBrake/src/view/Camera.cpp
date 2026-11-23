@@ -2,7 +2,7 @@
 //  [담당: 유현조] 카메라
 //  - 3인칭: 목표 위치(차 뒤·위)로 현재 위치를 조금씩 보간 → 부드럽게 따라옴
 //  - 속도가 빠를수록 시야각(FOV)이 넓어짐 (속도감)
-//  TODO(현조): 거리·높이·추적 속도 조정, 급회전·복귀 시 흔들림 처리
+//  프레임 시간과 무관한 지수 보간, 복귀 시 카메라 재설정.
 // =====================================================================================
 #include "view/Camera.h"
 #include "vehicle/CarPhysics.h"
@@ -29,9 +29,10 @@ void Camera_Reset(const Game& g)
 void Camera_Update(const Game& g, float dt)
 {
 	const Car& c = g.cars[0];
-	float k = glm::clamp(FOLLOW_SPEED * dt, 0.0f, 1.0f);
+	if (glm::length(ChaseTarget(c) - sEye) > 35.0f) Camera_Reset(g);
+	float k = 1.0f - std::exp(-FOLLOW_SPEED * dt);
 	sEye = glm::mix(sEye, ChaseTarget(c), k);
-	sLook = glm::mix(sLook, c.pos + Car_Forward(c) * 4.0f + glm::vec3(0, 1.2f, 0), k * 1.5f);
+	sLook = glm::mix(sLook, c.pos + Car_Forward(c) * 4.0f + glm::vec3(0, 1.2f, 0), 1.0f - std::exp(-FOLLOW_SPEED * 1.5f * dt));
 
 	float speedRatio = glm::clamp(std::fabs(c.speed) / CarSpec_Get(c.type).maxSpeed, 0.0f, 1.3f);
 	float targetFov = 60.0f + 18.0f * speedRatio + (c.boostTime > 0.0f ? 6.0f : 0.0f);
@@ -44,7 +45,7 @@ CameraView Camera_Main(const Game& g, float aspect)
 	const Car& c = g.cars[0];
 	if (g.viewMode == ViewMode::FirstPerson)
 	{
-		v.eye = c.pos + Car_Forward(c) * 0.3f + glm::vec3(0, 1.4f, 0);
+		v.eye = c.pos + Car_Forward(c) * 0.5f + glm::vec3(0, CarSpec_Get(c.type).size.y + 0.2f, 0);
 		v.view = glm::lookAt(v.eye, v.eye + Car_Forward(c), glm::vec3(0, 1, 0));
 	}
 	else

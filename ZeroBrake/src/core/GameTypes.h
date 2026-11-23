@@ -64,6 +64,10 @@ struct Car
 	// 특수 기능 [현조: CarAbility]
 	bool handbrakeOn = false;
 	float boostTime = 0.0f;    // 남은 부스트 시간 (초)
+	float padBoostTime = 0.0f; // 패드의 2초 효과: Shift와 분리
+	bool boostExhausted = false; // 게이지 소진 후 Shift를 놓아야 재사용
+	int boostPadIndex = -1; // 패드에 진입한 순간에만 발동
+	bool startedLap = false; // 첫 출발선 통과는 랩 시작, 완주 아님
 	float boostGauge = 1.0f;   // 0~1
 
 	// 경기 진행 [우석: RaceRules / AIDriver]

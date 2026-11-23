@@ -1,148 +1,158 @@
-﻿// =====================================================================================
-//  [담당: 유현조] 화면
-//  - 글자는 7세그먼트로 표시 가능한 것만 사용 (CAr, StAGE, AI, PAUSE ...)
-//  - 창 제목줄에도 현재 선택을 영어로 표시 (디버그·안내용)
-//  TODO(현조): 타이틀 연출, 선택 화면 차량 미리보기 위치, 결과 화면 순위표
-// =====================================================================================
+﻿// 1280x720 논리 좌표로 UI를 그려 창 크기 변경에도 메뉴가 잘리지 않게 한다.
 #include "ui/Screens.h"
 #include "ui/Hud.h"
 #include "ui/SevenSeg.h"
+#include "ui/BitmapText.h"
 #include "core/Input.h"
 #include "core/Shader.h"
 #include "vehicle/CarSpecs.h"
 #include "vehicle/CarModel.h"
 #include "render/Lighting.h"
+#include "race/Ghost.h"
 
-static const char* kMapNames[2] = { "HIGH-SPEED CIRCUIT", "TECHNICAL CIRCUIT" };
-
-static void SetWindowTitle(const std::string& s) { glfwSetWindowTitle(gWindow, ("ZERO BRAKE | " + s).c_str()); }
-
-// 화면 가운데에 차를 돌려서 보여주기 (타이틀·선택 화면)
-static void DrawCarPreview(const Game& g, CarType type, float cx, float cy, float size)
+static const glm::vec4 WHITE(1), CYAN(0.2f, 0.85f, 1, 1), GOLD(1, 0.8f, 0.25f, 1), MUTED(0.6f, 0.69f, 0.78f, 1);
+static const char* MAPS[] = { "HIGH-SPEED CIRCUIT", "TECHNICAL CIRCUIT" };
+static void Title(const std::string& s) { glfwSetWindowTitle(gWindow, ("ZERO BRAKE | " + s).c_str()); }
+static void Center(const std::string& text, float y, float size, glm::vec4 c)
+{ Text_Draw((1280 - Text_Width(text, size)) * 0.5f, y, text, size, c); }
+static void Background()
 {
-	int vs = (int)size;
-	glViewport((int)(cx - size / 2), (int)(gHeight - cy - size / 2), vs, vs);
-	glm::vec3 eye(6.0f, 3.5f, 7.0f);
+	glClearColor(0.025f, 0.04f, 0.065f, 1); glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+}
+static void Preview(const Game& g, CarType type, float x, float y, float size)
+{
+	glViewport((int)((x - size / 2) * gWidth / 1280), (int)((720 - y - size / 2) * gHeight / 720),
+		std::max(1, (int)(size * gWidth / 1280)), std::max(1, (int)(size * gHeight / 720)));
+	glm::vec3 eye(6, 3.5f, 7);
 	Shader_SetMat4("view", glm::lookAt(eye, glm::vec3(0, 0.8f, 0), glm::vec3(0, 1, 0)));
-	Shader_SetMat4("projection", glm::perspective(glm::radians(40.0f), 1.0f, 0.1f, 100.0f));
+	Shader_SetMat4("projection", glm::perspective(glm::radians(40.0f), (float)gWidth / gHeight * 720 / 1280, 0.1f, 100.0f));
 	Lighting_Apply(g, eye);
-	float a = (float)glfwGetTime() * 0.8f;
-	CarModel_DrawAt(type, glm::rotate(glm::mat4(1.0f), a, glm::vec3(0, 1, 0)), 0.0f, 0.0f, 1.0f);
+	CarModel_DrawAt(type, glm::rotate(glm::mat4(1), (float)glfwGetTime() * 0.5f, glm::vec3(0, 1, 0)), 0, 0, 1);
 	glViewport(0, 0, gWidth, gHeight);
 }
-
-// ---------------------------------------------------------------- Title
 void Screens_UpdateTitle(Game& g)
 {
-	SetWindowTitle("Press ENTER");
+	Title("ENTER to select | Click a circuit card");
+	static bool previous = false;
+	bool down = glfwGetMouseButton(gWindow, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+	if (down && !previous)
+	{
+		double x, y; int w, h; glfwGetCursorPos(gWindow, &x, &y); glfwGetWindowSize(gWindow, &w, &h);
+		x = x * 1280 / std::max(1, w); y = y * 720 / std::max(1, h);
+		if (y >= 496 && y <= 586)
+			for (int map = 0; map < 2; ++map)
+				if (x >= 170 + map * 490 && x <= 620 + map * 490)
+				{ g.settings.mapId = map; g.state = GameState::Select; }
+	}
+	previous = down;
 	if (Input_Pressed(GLFW_KEY_ENTER) || Input_Pressed(GLFW_KEY_KP_ENTER)) g.state = GameState::Select;
 }
-
 void Screens_DrawTitle(const Game& g)
 {
-	glClearColor(0.08f, 0.09f, 0.13f, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	DrawCarPreview(g, CarType::Balance, gWidth * 0.5f, gHeight * 0.45f, gHeight * 0.6f);
-
+	Background(); Preview(g, CarType::Speed, 640, 335, 440);
 	Hud_Begin();
-	Hud_Rect(0, gHeight * 0.08f, (float)gWidth, 8, glm::vec4(0.9f, 0.3f, 0.15f, 1));
-	std::string msg = "PrESS EntEr";
-	float sz = 40.0f;
-	if (std::fmod(glfwGetTime(), 1.0) < 0.7)
-		SevenSeg_Text((gWidth - SevenSeg_TextWidth(msg, sz)) * 0.5f, gHeight * 0.82f, msg, sz, glm::vec4(1));
+	Text_Draw(70, 38, "OPENGL ARCADE RACING", 14, CYAN);
+	Center("ZERO BRAKE", 88, 66, WHITE);
+	Center("THREE CARS. TWO CIRCUITS. ONE FINISH LINE.", 180, 15, MUTED);
+	for (int i = 0; i < 2; ++i)
+	{
+		float x = 170.0f + i * 490;
+		Hud_Rect(x, 496, 450, 90, glm::vec4(0.08f, 0.13f, 0.2f, 0.95f));
+		Hud_Rect(x, 496, 4, 90, i == 0 ? CYAN : GOLD);
+		Text_Draw(x + 22, 516, MAPS[i], 19, WHITE);
+		Text_Draw(x + 22, 554, i == 0 ? "WIDE ROADS / FAST STRAIGHTS" : "TIGHT TURNS / CITY STREETS", 12, MUTED);
+	}
+	Center("ENTER TO SELECT  /  CLICK A CIRCUIT", 625, 18, CYAN);
+	Center("W/S DRIVE  A/D STEER  SPACE DRIFT  SHIFT BOOST  Q QUIT", 678, 12, MUTED);
 	Hud_End();
 }
-
-// ---------------------------------------------------------------- Select
 bool Screens_UpdateSelect(Game& g)
 {
-	RaceSettings& s = g.settings;
+	auto& s = g.settings;
 	if (Input_Pressed(GLFW_KEY_UP)) g.menuRow = (g.menuRow + 2) % 3;
 	if (Input_Pressed(GLFW_KEY_DOWN)) g.menuRow = (g.menuRow + 1) % 3;
 	int d = (Input_Pressed(GLFW_KEY_RIGHT) ? 1 : 0) - (Input_Pressed(GLFW_KEY_LEFT) ? 1 : 0);
-	if (d != 0)
-	{
-		if (g.menuRow == 0) s.playerCar = (CarType)(((int)s.playerCar + d + 3) % 3);
-		if (g.menuRow == 1) s.mapId = (s.mapId + d + 2) % 2;
-		if (g.menuRow == 2) s.aiCount = glm::clamp(s.aiCount + d, 1, 3);
-	}
-	if (Input_Pressed(GLFW_KEY_ESCAPE)) g.state = GameState::Title;
-
-	SetWindowTitle(std::string("Car: ") + CarSpec_Get(s.playerCar).name + " | Map: " + kMapNames[s.mapId] +
-		" | AI: " + std::to_string(s.aiCount) + "  (Arrows: change, ENTER: start)");
+	if (g.menuRow == 0) s.playerCar = (CarType)(((int)s.playerCar + d + 3) % 3);
+	if (g.menuRow == 1) s.mapId = (s.mapId + d + 2) % 2;
+	if (g.menuRow == 2) s.aiCount = glm::clamp(s.aiCount + d, 1, 3);
+	if (Input_Pressed(GLFW_KEY_ESCAPE)) { g.state = GameState::Title; return false; }
+	Title(std::string(CarSpec_Get(s.playerCar).name) + " | " + MAPS[s.mapId]);
 	return Input_Pressed(GLFW_KEY_ENTER) || Input_Pressed(GLFW_KEY_KP_ENTER);
 }
-
 void Screens_DrawSelect(const Game& g)
 {
-	glClearColor(0.08f, 0.09f, 0.13f, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	DrawCarPreview(g, g.settings.playerCar, gWidth * 0.7f, gHeight * 0.5f, gHeight * 0.7f);
-
+	Background(); Preview(g, g.settings.playerCar, 930, 300, 450);
 	Hud_Begin();
-	const char* labels[3] = { "CAr", "StAGE", "AI" };
-	int values[3] = { (int)g.settings.playerCar + 1, g.settings.mapId + 1, g.settings.aiCount };
-	for (int i = 0; i < 3; i++)
+	Text_Draw(60, 45, "RACE SETUP", 40, WHITE);
+	Text_Draw(60, 107, "CHOOSE YOUR CAR AND CIRCUIT", 14, MUTED);
+	const char* labels[] = { "CAR", "CIRCUIT", "AI OPPONENTS" };
+	const std::string values[] = { CarSpec_Get(g.settings.playerCar).name, MAPS[g.settings.mapId], std::to_string(g.settings.aiCount) };
+	for (int i = 0; i < 3; ++i)
 	{
-		float y = gHeight * 0.25f + i * 110.0f;
-		bool sel = (g.menuRow == i);
-		Hud_Rect(60, y - 14, 440, 86, sel ? glm::vec4(0.9f, 0.3f, 0.15f, 0.9f) : glm::vec4(1, 1, 1, 0.08f));
-		SevenSeg_Text(84, y, labels[i], 56, glm::vec4(1));
-		SevenSeg_Text(400, y, std::to_string(values[i]), 56, glm::vec4(1, 0.85f, 0.3f, 1));
+		float y = 176.0f + i * 126;
+		bool selected = i == g.menuRow;
+		Hud_Rect(60, y, 560, 102, selected ? glm::vec4(0.09f, 0.23f, 0.3f, 1) : glm::vec4(0.055f, 0.09f, 0.14f, 1));
+		if (selected) Hud_Rect(60, y, 4, 102, CYAN);
+		Text_Draw(82, y + 16, labels[i], 13, MUTED);
+		Text_Draw(82, y + 49, values[i], i == 1 ? 21.0f : 25.0f, selected ? CYAN : WHITE);
+		Text_Draw(565, y + 49, "<>" , 18, MUTED);
 	}
+	const CarSpec& spec = CarSpec_Get(g.settings.playerCar);
+	const char* stats[] = { "TOP SPEED", "ACCELERATION", "HANDLING" };
+	float amounts[] = { spec.maxSpeed / 60, spec.accel / 20, spec.steerRate / 140 };
+	for (int i = 0; i < 3; ++i)
+	{
+		float y = 440.0f + i * 36;
+		Text_Draw(750, y, stats[i], 12, MUTED);
+		Hud_Rect(930, y, 250, 12, glm::vec4(1, 1, 1, 0.1f));
+		Hud_Rect(930, y, 250 * amounts[i], 12, CYAN);
+	}
+	float best = Ghost_BestTime(g.settings.mapId, g.settings.playerCar);
+	Text_Draw(750, 565, "PERSONAL BEST", 13, GOLD);
+	Text_Draw(750, 593, best > 0 ? Hud_FormatTime(best) : "NO RECORD YET", 22, WHITE);
+	Text_Draw(60, 598, "3 LAPS / 5 MINUTE TIME LIMIT", 14, GOLD);
+	Text_Draw(60, 668, "UP/DOWN SELECT  LEFT/RIGHT CHANGE  ENTER START  ESC BACK", 14, CYAN);
 	Hud_End();
 }
-
-// ---------------------------------------------------------------- Countdown / Pause
 void Screens_DrawCountdown(const Game& g)
 {
 	Hud_Begin();
-	int n = (int)std::ceil(g.countdown);
-	std::string s = std::to_string(std::max(n, 1));
-	float sz = 200.0f;
-	SevenSeg_Text((gWidth - SevenSeg_TextWidth(s, sz)) * 0.5f, (gHeight - sz) * 0.5f, s, sz, glm::vec4(1, 0.85f, 0.2f, 1));
-	Hud_End();
+	Hud_Rect(540, 260, 200, 210, glm::vec4(0.02f, 0.04f, 0.08f, 0.8f));
+	SevenSeg_Text(600, 280, std::to_string(std::max(1, (int)std::ceil(g.countdown))), 140, GOLD);
+	Center("GET READY", 452, 14, WHITE); Hud_End();
 }
-
-void Screens_DrawPause(const Game& g)
+void Screens_DrawPause(const Game&)
 {
-	Hud_Begin();
-	Hud_Rect(0, 0, (float)gWidth, (float)gHeight, glm::vec4(0, 0, 0, 0.5f));
-	std::string s = "PAUSE";
-	float sz = 90.0f;
-	SevenSeg_Text((gWidth - SevenSeg_TextWidth(s, sz)) * 0.5f, (gHeight - sz) * 0.5f, s, sz, glm::vec4(1));
-	Hud_End();
+	Hud_Begin(); Hud_Rect(0, 0, 1280, 720, glm::vec4(0, 0, 0, 0.75f));
+	Center("PAUSED", 280, 58, WHITE); Center("P RESUME   ESC TITLE   Q QUIT", 388, 18, CYAN); Hud_End();
 }
-
-// ---------------------------------------------------------------- Result
 bool Screens_UpdateResult(Game& g)
 {
-	SetWindowTitle(g.race.timeOver && !g.race.playerFinished ? "TIME OVER  (ENTER: retry, Q: quit)" : "FINISH  (ENTER: retry, Q: quit)");
+	Title(g.race.timeOver ? "TIME OVER | ENTER to race again" : "FINISH | ENTER to race again");
 	return Input_Pressed(GLFW_KEY_ENTER) || Input_Pressed(GLFW_KEY_KP_ENTER);
 }
-
 void Screens_DrawResult(const Game& g)
 {
-	Hud_Begin();
-	Hud_Rect(0, 0, (float)gWidth, (float)gHeight, glm::vec4(0, 0, 0, 0.55f));
-	float cx = gWidth * 0.5f;
-	glm::vec4 yellow(1, 0.85f, 0.3f, 1), white(1);
-
-	if (g.race.timeOver && !g.race.playerFinished)
-	{
-		std::string s = "FAIL";
-		SevenSeg_Text(cx - SevenSeg_TextWidth(s, 120) * 0.5f, gHeight * 0.3f, s, 120, glm::vec4(1, 0.3f, 0.3f, 1));
-	}
-	else
-	{
-		std::string s = "POS " + std::to_string(g.cars[0].rank);
-		SevenSeg_Text(cx - SevenSeg_TextWidth(s, 120) * 0.5f, gHeight * 0.22f, s, 120, yellow);
-		std::string t = Hud_FormatTime(g.cars[0].finishTime);
-		SevenSeg_Text(cx - SevenSeg_TextWidth(t, 60) * 0.5f, gHeight * 0.48f, t, 60, white);
-	}
-	std::string b = "bESt " + Hud_FormatTime(g.race.bestLap);
-	SevenSeg_Text(cx - SevenSeg_TextWidth(b, 36) * 0.5f, gHeight * 0.62f, b, 36, white);
-	std::string e = "PrESS EntEr";
-	SevenSeg_Text(cx - SevenSeg_TextWidth(e, 32) * 0.5f, gHeight * 0.8f, e, 32, white);
-	Hud_End();
+	Hud_Begin(); Hud_Rect(0, 0, 1280, 720, glm::vec4(0.015f, 0.025f, 0.045f, 0.93f));
+	Center(g.race.timeOver ? "TIME OVER" : (g.cars[0].rank == 1 ? "VICTORY" : "RACE COMPLETE"), 45, 42, g.race.timeOver ? glm::vec4(1, 0.3f, 0.2f, 1) : GOLD);
+	Text_Draw(150, 135, "POS", 14, MUTED); Text_Draw(260, 135, "DRIVER / CAR", 14, MUTED);
+	Text_Draw(690, 135, "STATUS", 14, MUTED); Text_Draw(970, 135, "TIME", 14, MUTED);
+	for (int rank = 1; rank <= g.carCount; ++rank)
+		for (int i = 0; i < g.carCount; ++i)
+		{
+			const Car& c = g.cars[i]; if (!c.active || c.rank != rank) continue;
+			float y = 175.0f + (rank - 1) * 72;
+			Hud_Rect(130, y, 1020, 60, c.isPlayer ? glm::vec4(0.08f, 0.22f, 0.29f, 1) : glm::vec4(1, 1, 1, 0.04f));
+			Text_Draw(152, y + 20, std::to_string(rank), 22, c.isPlayer ? CYAN : WHITE);
+			Text_Draw(260, y + 20, std::string(c.isPlayer ? "YOU / " : "AI / ") + CarSpec_Get(c.type).name, 18, WHITE);
+			std::string status = c.finished ? "FINISHED" : "LAP " + std::to_string(std::min(c.lap + 1, g.settings.laps)) + "/" + std::to_string(g.settings.laps);
+			if (g.race.timeOver && c.isPlayer) status = "TIME LIMIT";
+			Text_Draw(690, y + 20, status, 17, c.finished ? GOLD : MUTED);
+			Text_Draw(970, y + 20, c.finished ? Hud_FormatTime(c.finishTime) : "--:--.--", 17, WHITE);
+		}
+	Text_Draw(150, 505, "TOTAL " + Hud_FormatTime(g.race.time), 19, WHITE);
+	Text_Draw(150, 549, "RACE BEST " + (g.race.bestLap > 0 ? Hud_FormatTime(g.race.bestLap) : "--:--.--"), 17, MUTED);
+	float best = Ghost_BestTime(g.settings.mapId, g.settings.playerCar);
+	Text_Draw(690, 549, "PERSONAL " + (best > 0 ? Hud_FormatTime(best) : "--:--.--"), 17, GOLD);
+	Center("ENTER RACE AGAIN   Q QUIT", 660, 19, CYAN); Hud_End();
 }

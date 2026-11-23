@@ -38,6 +38,7 @@ void CarPhysics_Update(Car& car, const CarInput& in, float dt)
 {
 	const CarSpec& s = CarSpec_Get(car.type);
 	float maxSpeed = s.maxSpeed * CarAbility_MaxSpeedScale(car) * (car.isPlayer ? 1.0f : car.aiSkill);
+	const float previousSpeed = car.speed;
 
 	// --- 가속 / 제동 / 후진 ---
 	if (in.throttle > 0.0f)
@@ -54,7 +55,13 @@ void CarPhysics_Update(Car& car, const CarInput& in, float dt)
 		if (car.speed > 0) car.speed = std::max(0.0f, car.speed - drag * dt);
 		else car.speed = std::min(0.0f, car.speed + drag * dt);
 	}
-	car.speed = glm::clamp(car.speed, -s.reverseMax, maxSpeed);
+	// 부스트 종료 때 속도를 순간적으로 잘라내지 않고 원래 상한으로 감속한다.
+	if (previousSpeed > maxSpeed)
+		car.speed = std::min(car.speed, std::max(maxSpeed, previousSpeed - 14.0f * dt));
+	else
+		car.speed = std::min(car.speed, maxSpeed);
+	car.speed = std::max(car.speed, -s.reverseMax);
+	if (car.finished) car.speed = std::max(0.0f, car.speed);
 
 	// --- 조향: 속도가 있어야 회전 (정지 상태에선 앞바퀴만 꺾임) ---
 	car.steerAngle = glm::mix(car.steerAngle, in.steer * 30.0f, glm::clamp(10.0f * dt, 0.0f, 1.0f));

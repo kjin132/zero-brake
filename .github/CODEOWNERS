@@ -1,0 +1,18 @@
+# 파일별 담당자 (Pull Request 를 만들면 담당자에게 자동으로 리뷰 요청이 감)
+
+# 공동
+*                                   @kjin132 @dbguswh
+
+# 진우석
+/ZeroBrake/src/vehicle/CarSpecs.*   @kjin132
+/ZeroBrake/src/vehicle/CarPhysics.* @kjin132
+/ZeroBrake/src/race/                @kjin132
+/ZeroBrake/src/render/              @kjin132
+/ZeroBrake/shaders/basic.frag       @kjin132
+
+# 유현조
+/ZeroBrake/src/vehicle/CarModel.*   @dbguswh
+/ZeroBrake/src/vehicle/CarAbility.* @dbguswh
+/ZeroBrake/src/world/               @dbguswh
+/ZeroBrake/src/view/                @dbguswh
+/ZeroBrake/src/ui/                  @dbguswh

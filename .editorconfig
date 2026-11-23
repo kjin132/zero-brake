@@ -1,0 +1,19 @@
+# 두 사람이 같은 들여쓰기·인코딩으로 저장하도록 VS / VS Code에 알려주는 파일
+root = true
+
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# C++ 소스는 BOM 포함 (VS 기본과 같게), 셰이더는 BOM 없이 (드라이버가 BOM 을 못 읽는 경우가 있음)
+[*.{cpp,h}]
+charset = utf-8-bom
+
+[*.{cpp,h,glsl,vert,frag}]
+indent_style = tab
+indent_size = 4
+
+[*.md]
+trim_trailing_whitespace = false

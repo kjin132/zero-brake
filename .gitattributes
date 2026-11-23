@@ -1,0 +1,21 @@
+# 줄바꿈 자동 정리: 저장소에는 LF, 윈도우 작업 폴더에는 CRLF
+# → 두 사람 PC 설정이 달라도 "줄바꿈만 바뀐 변경"이 생기지 않음
+* text=auto eol=crlf
+
+*.cpp  text eol=crlf
+*.h    text eol=crlf
+*.glsl text eol=crlf
+*.vert text eol=crlf
+*.frag text eol=crlf
+*.md   text eol=crlf
+*.sln     text eol=crlf
+*.vcxproj text eol=crlf
+
+# 바이너리 파일은 줄바꿈 변환 금지
+*.png binary
+*.jpg binary
+*.bmp binary
+*.obj text eol=crlf
+*.dll binary
+*.lib binary
+*.exe binary

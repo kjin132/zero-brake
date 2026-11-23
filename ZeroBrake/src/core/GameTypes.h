@@ -40,9 +40,9 @@ struct CarSpec
 // 한 프레임의 조작 입력 (플레이어는 키보드, AI는 AIDriver 가 채움)
 struct CarInput
 {
-	float throttle = 0.0f;  // 0~1  (W)
-	float brake = 0.0f;     // 0~1  (S)
-	float steer = 0.0f;     // -1(왼쪽) ~ +1(오른쪽)  (A/D)
+	float throttle = 0.0f;  // 0~1  (↑)
+	float brake = 0.0f;     // 0~1  (↓)
+	float steer = 0.0f;     // -1(왼쪽) ~ +1(오른쪽)  (←/→)
 	bool handbrake = false; // Space
 	bool boost = false;     // Shift
 };

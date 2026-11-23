@@ -72,9 +72,9 @@ void Game_StartRace(Game& g)
 static CarInput ReadPlayerInput()
 {
 	CarInput in;
-	in.throttle = Input_Down(GLFW_KEY_W) ? 1.0f : 0.0f;
-	in.brake = Input_Down(GLFW_KEY_S) ? 1.0f : 0.0f;
-	in.steer = (Input_Down(GLFW_KEY_D) ? 1.0f : 0.0f) - (Input_Down(GLFW_KEY_A) ? 1.0f : 0.0f);
+	in.throttle = Input_Down(GLFW_KEY_UP) ? 1.0f : 0.0f;
+	in.brake = Input_Down(GLFW_KEY_DOWN) ? 1.0f : 0.0f;
+	in.steer = (Input_Down(GLFW_KEY_RIGHT) ? 1.0f : 0.0f) - (Input_Down(GLFW_KEY_LEFT) ? 1.0f : 0.0f);
 	in.handbrake = Input_Down(GLFW_KEY_SPACE);
 	in.boost = Input_Down(GLFW_KEY_LEFT_SHIFT) || Input_Down(GLFW_KEY_RIGHT_SHIFT);
 	return in;

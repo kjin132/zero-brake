@@ -7,9 +7,9 @@
 
 static const CarSpec kSpecs[(int)CarType::Count] = {
 	//  name       accel brake maxSpd rev  steer grip  size(가로,높이,길이)        color
-	{ "BALANCE",   14.0f, 26.0f, 42.0f, 10.0f, 95.0f, 0.90f, {2.0f, 1.3f, 4.0f}, {0.90f, 0.30f, 0.15f} },
-	{ "SPEED",     12.0f, 24.0f, 52.0f, 10.0f, 75.0f, 0.85f, {2.0f, 1.1f, 4.6f}, {0.15f, 0.40f, 0.90f} },
-	{ "CORNER",    17.0f, 30.0f, 36.0f, 10.0f, 120.0f, 0.95f, {1.8f, 1.3f, 3.4f}, {0.20f, 0.75f, 0.35f} },
+	{ "밸런스형",   14.0f, 26.0f, 42.0f, 10.0f, 95.0f, 0.90f, {2.0f, 1.3f, 4.0f}, {0.90f, 0.30f, 0.15f} },
+	{ "스피드형",     12.0f, 24.0f, 52.0f, 10.0f, 75.0f, 0.85f, {2.0f, 1.1f, 4.6f}, {0.15f, 0.40f, 0.90f} },
+	{ "코너형",    17.0f, 30.0f, 36.0f, 10.0f, 120.0f, 0.95f, {1.8f, 1.3f, 3.4f}, {0.20f, 0.75f, 0.35f} },
 };
 
 const CarSpec& CarSpec_Get(CarType type)

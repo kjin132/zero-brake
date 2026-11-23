@@ -48,14 +48,14 @@ void Hud_DrawRace(const Game& g)
 	Hud_Begin();
 	glm::vec4 panel(0.035f, 0.055f, 0.09f, 0.88f), gold(1, 0.8f, 0.25f, 1), cyan(0.2f, 0.85f, 1, 1), white(1);
 	Hud_Rect(18, 18, 300, 212, panel); Hud_Rect(18, 18, 4, 212, cyan);
-	Text_Draw(34, 32, "LAP", 15, gold); Text_Draw(180, 32, "POSITION", 15, cyan);
+	Text_Draw(34, 32, "바퀴", 17, gold); Text_Draw(180, 32, "순위", 17, cyan);
 	SevenSeg_Text(34, 56, std::to_string(std::min(p.lap + 1, g.settings.laps)) + "/" + std::to_string(g.settings.laps), 38, gold);
 	SevenSeg_Text(180, 56, std::to_string(p.rank) + "/" + std::to_string(g.carCount), 38, cyan);
-	Text_Draw(34, 110, "CURRENT LAP", 12, cyan);
+	Text_Draw(34, 110, "현재 랩", 17, cyan);
 	SevenSeg_Text(34, 130, Hud_FormatTime(p.startedLap ? g.race.time - g.race.lapStartTime : 0), 33, white);
 	float best = Ghost_BestTime(g.settings.mapId, g.settings.playerCar);
-	Text_Draw(34, 180, "BEST " + (best > 0 ? Hud_FormatTime(best) : "--:--.--"), 13, gold);
-	Text_Draw(34, 206, "TOTAL " + Hud_FormatTime(g.race.time), 12, white);
+	Text_Draw(34, 180, "최고 " + (best > 0 ? Hud_FormatTime(best) : "--:--.--"), 17, gold);
+	Text_Draw(34, 206, "총 시간 " + Hud_FormatTime(g.race.time), 17, white);
 
 	float x = 950, y = 546;
 	Hud_Rect(x, y, 312, 156, panel);
@@ -66,17 +66,17 @@ void Hud_DrawRace(const Game& g)
 		float ratio = std::fabs(p.speed) / CarSpec_Get(p.type).maxSpeed;
 		glm::vec4 color = i < 20 ? cyan : gold;
 		if (i / 26.0f > ratio) color = glm::vec4(1, 1, 1, 0.13f);
-		Hud_Rect(x + 18 + i * 10.5f, y + 87, 8, 12, color);
+		Hud_Rect(x + 18 + i * 10.5f, y + 87, 8, 17, color);
 	}
-	Text_Draw(x + 18, y + 118, p.boostTime > 0 ? "BOOST ON" : "BOOST", 11, p.boostTime > 0 ? gold : cyan);
+	Text_Draw(x + 18, y + 118, p.boostTime > 0 ? "부스트 중" : "부스트", 17, p.boostTime > 0 ? gold : cyan);
 	Hud_Rect(x + 110, y + 115, 182, 16, glm::vec4(1, 1, 1, 0.12f));
 	Hud_Rect(x + 110, y + 115, 182 * glm::clamp(p.boostGauge, 0.0f, 1.0f), 16, p.boostTime > 0 ? gold : cyan);
 	float remain = std::max(0.0f, g.settings.timeLimit - g.race.time);
-	Text_Draw(20, 660, "TIME LEFT", 12, cyan);
+	Text_Draw(20, 660, "남은 시간", 17, cyan);
 	SevenSeg_Text(20, 680, Hud_FormatTime(remain), 24, remain < 30 ? glm::vec4(1, 0.3f, 0.2f, 1) : white);
-	Text_Draw(278, 686, "C CAMERA   M MAP   P PAUSE   R RESET", 12, white);
-	if (p.handbrakeOn) Text_Draw(540, 610, "DRIFT", 23, gold);
+	Text_Draw(278, 686, "C 시점 전환   M 지도   P 일시정지   R 복귀", 17, white);
+	if (p.handbrakeOn) Text_Draw(540, 610, "드리프트", 23, gold);
 	if (g.state == GameState::Race && g.race.time < 1.0f)
-		Text_Draw(570, 280, "GO", 70, cyan);
+		Text_Draw((1280 - Text_Width("출발!", 70)) * 0.5f, 280, "출발!", 70, cyan);
 	Hud_End();
 }

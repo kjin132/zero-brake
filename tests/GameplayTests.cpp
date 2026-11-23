@@ -1,4 +1,4 @@
-#include "core/GameTypes.h"
+﻿#include "core/GameTypes.h"
 #include "core/Mesh.h"
 #include "vehicle/CarPhysics.h"
 #include "vehicle/CarAbility.h"
@@ -11,6 +11,7 @@
 #include "view/Camera.h"
 #include "game/Game.h"
 #include "core/Shader.h"
+#include "ui/BitmapText.h"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -178,6 +179,7 @@ static void RenderTests()
     std::filesystem::current_path(previous);
     glfwSetWindowSize(gWindow, gWidth, gHeight); glfwPollEvents();
     glEnable(GL_DEPTH_TEST); glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    Check(Text_Init(), "Korean text renderer initializes");
     Game g; Game_Init(g); Snapshot(g, "title");
     g.state = GameState::Select; Snapshot(g, "select");
     Game_StartRace(g); Snapshot(g, "countdown");
@@ -211,7 +213,7 @@ int main(int argc, char**)
         Mesh_InitPrimitives();
         AbilityTests(); CollisionTests(); RulesTests(); CircuitTests(); RenderTests();
         { std::ofstream corrupt("save/ghost_4.txt"); corrupt << "ZB_GHOST_1 4 5 999999999"; }
-        glfwDestroyWindow(gWindow); glfwTerminate();
+        Text_Shutdown(); glfwDestroyWindow(gWindow); glfwTerminate();
         std::cout << checks << " checks passed\n"; return 0;
     }
     catch (const std::exception& e) { std::cerr << "FAIL " << e.what() << '\n'; return 1; }

@@ -7,6 +7,7 @@
 #include "core/Mesh.h"
 #include "core/Input.h"
 #include "game/Game.h"
+#include "ui/BitmapText.h"
 #include <iostream>
 
 int gWidth = 1280, gHeight = 720;
@@ -46,6 +47,7 @@ int main()
 
 	if (!Shader_Load("shaders/basic.vert", "shaders/basic.frag")) return -1;
 	Mesh_InitPrimitives();
+	if (!Text_Init()) { glfwDestroyWindow(gWindow); glfwTerminate(); return -1; }
 
 	static Game game;
 	Game_Init(game);
@@ -65,6 +67,7 @@ int main()
 		glfwSwapBuffers(gWindow);
 	}
 
+	Text_Shutdown();
 	glfwDestroyWindow(gWindow);
 	glfwTerminate();
 	return 0;

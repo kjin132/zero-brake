@@ -7,6 +7,7 @@ layout (location = 2) in vec2 vUV;
 uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
+uniform vec2 uvScale;         // 텍스처 반복 (기본 1,1)
 
 out vec3 FragPos;
 out vec3 Normal;
@@ -18,5 +19,5 @@ void main()
 	gl_Position = projection * view * world;
 	FragPos = world.xyz;
 	Normal = mat3(transpose(inverse(model))) * vNormal;
-	UV = vUV;
+	UV = vUV * uvScale;
 }

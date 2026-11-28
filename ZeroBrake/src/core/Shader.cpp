@@ -69,6 +69,7 @@ GLuint Shader_Current() { return sProgram; }
 static GLint Loc(const char* name) { return glGetUniformLocation(sProgram, name); }
 
 void Shader_SetMat4(const char* name, const glm::mat4& m) { glUniformMatrix4fv(Loc(name), 1, GL_FALSE, glm::value_ptr(m)); }
+void Shader_SetVec2(const char* name, const glm::vec2& v) { glUniform2fv(Loc(name), 1, glm::value_ptr(v)); }
 void Shader_SetVec3(const char* name, const glm::vec3& v) { glUniform3fv(Loc(name), 1, glm::value_ptr(v)); }
 void Shader_SetVec4(const char* name, const glm::vec4& v) { glUniform4fv(Loc(name), 1, glm::value_ptr(v)); }
 void Shader_SetFloat(const char* name, float f) { glUniform1f(Loc(name), f); }

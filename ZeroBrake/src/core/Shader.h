@@ -7,6 +7,7 @@ GLuint Shader_Load(const char* vertFile, const char* fragFile);
 GLuint Shader_Current();
 
 void Shader_SetMat4(const char* name, const glm::mat4& m);
+void Shader_SetVec2(const char* name, const glm::vec2& v);
 void Shader_SetVec3(const char* name, const glm::vec3& v);
 void Shader_SetVec4(const char* name, const glm::vec4& v);
 void Shader_SetFloat(const char* name, float f);

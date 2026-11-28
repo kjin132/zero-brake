@@ -26,6 +26,7 @@
 #include "world/Scenery.h"
 #include "render/Lighting.h"
 #include "render/Texture.h"
+#include "render/Particles.h"
 #include "view/Camera.h"
 #include "view/Viewports.h"
 #include "ui/Hud.h"
@@ -63,6 +64,7 @@ void Game_StartRace(Game& g)
 	g.race = RaceInfo();
 	RaceRules_Start(g);
 	Ghost_StartRace(g);
+	Particles_Clear();
 	Camera_Reset(g);
 	g.countdown = 3.0f;
 	g.state = GameState::Countdown;
@@ -107,10 +109,12 @@ static void UpdateRace(Game& g, float dt)
 	Ghost_Update(g, step);
 		if (RaceRules_IsOver(g)) break;
 	}
-	// 5) 카메라 [현조]
+	// 5) 부스트 불꽃·드리프트 연기
+	Particles_Update(g, dt);
+	// 6) 카메라 [현조]
 	Camera_Update(g, dt);
 
-	// 6) 키 입력 (공통 단축키)
+	// 7) 키 입력 (공통 단축키)
 	if (Input_Pressed(GLFW_KEY_R)) { RaceRules_Respawn(g, g.cars[0]); Camera_Reset(g); }
 	if (Input_Pressed(GLFW_KEY_C)) g.viewMode = (g.viewMode == ViewMode::Chase) ? ViewMode::FirstPerson : ViewMode::Chase;
 	if (Input_Pressed(GLFW_KEY_M)) g.showMinimap = !g.showMinimap;
@@ -155,20 +159,23 @@ void World_Draw(const Game& g, const CameraView& cam, bool drawPlayer)
 {
 	Shader_SetMat4("view", cam.view);
 	Shader_SetMat4("projection", cam.proj);
-	Lighting_Apply(g, cam.eye);                          // [우석]
+	const bool topDown = cam.proj[3][3] == 1.0f;         // 직각 투영 = 미니맵 → 안개·파티클 생략
+	Lighting_Apply(g, cam.eye, !topDown);                // 방향광 + 가로등 + 전조등 + 안개
 
 	Scenery_Draw();                                      // [현조]
 	Track_Draw(g.track);                                 // [현조]
 	for (int i = 0; i < g.carCount; i++)
 		if (g.cars[i].active && (drawPlayer || i != 0)) CarModel_Draw(g.cars[i]);  // [현조] 외형, 바퀴 각도는 [우석] 값 사용
 	Ghost_Draw(g);                                       // 반투명은 맨 마지막 [우석·현조]
+	if (!topDown) Particles_Draw(cam.eye);               // 반투명 연기·불꽃 (먼 것부터)
 }
 
 // ---------------------------------------------------------------- 매 프레임 그리기
 void Game_Draw(Game& g)
 {
 	glViewport(0, 0, gWidth, gHeight);
-	glClearColor(0.55f, 0.75f, 0.95f, 1.0f);
+	glm::vec3 sky = Lighting_SkyColor(g.settings.mapId);
+	glClearColor(sky.r, sky.g, sky.b, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glUseProgram(Shader_Current());
 

@@ -35,6 +35,8 @@ struct DrawOpt
 	glm::vec4 color = glm::vec4(1.0f);
 	GLuint texture = 0;      // 0 = 텍스처 없음
 	bool lit = true;         // false = 조명 없이 색 그대로 (HUD 등)
+	float emissive = 0.0f;   // 0~1: 스스로 빛나는 정도 (전조등, 가로등, 밤 건물 창문)
+	glm::vec2 uvScale = glm::vec2(1.0f);  // 텍스처 반복 횟수 (건물 창문 등)
 };
 
 void Draw_Mesh(const Mesh& mesh, const glm::mat4& model, const DrawOpt& opt);

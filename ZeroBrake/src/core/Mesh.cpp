@@ -96,6 +96,8 @@ void Draw_Mesh(const Mesh& mesh, const glm::mat4& model, const DrawOpt& opt)
 	Shader_SetMat4("model", model);
 	Shader_SetVec4("uColor", opt.color);
 	Shader_SetInt("useLighting", opt.lit ? 1 : 0);
+	Shader_SetFloat("emissive", opt.emissive);
+	Shader_SetVec2("uvScale", opt.uvScale);
 	if (opt.texture)
 	{
 		glActiveTexture(GL_TEXTURE0);

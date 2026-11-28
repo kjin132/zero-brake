@@ -40,3 +40,6 @@ desktop.ini
 # 고스트 기록 등 실행 중 생기는 저장 파일
 ZeroBrake/save/
 /save/
+
+# 제출용 배포 폴더 (tools/MakeRelease.ps1 이 만듦)
+dist/

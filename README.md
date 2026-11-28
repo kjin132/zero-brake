@@ -1,4 +1,4 @@
-# ZERO BRAKE
+﻿# ZERO BRAKE
 
 2026-2 컴퓨터 그래픽스 최종 프로젝트 — 3D 아케이드 레이싱 게임 (C++ / OpenGL 3.3 / GLFW · GLEW · GLM)
 
@@ -14,7 +14,8 @@
    - 수업 컴그 프로젝트처럼 `GL/glew.h`, `GL/glfw3.h`, `gl/glm/` 과 `glew32.lib`, `glfw3.lib` 이 VS에 설치되어 있어야 함
    - 라이브러리 링크는 `src/core/Common.h` 의 `#pragma comment` 가 처리 → 프로젝트 설정 변경 불필요
 3. 빌드 결과물은 `build/` 폴더에 생김 (git 에 안 올라감).
-4. 제출용 Release 실행 파일은 `build/Release/` 에 생기고, 빌드 후 `shaders/`, `assets/` 가 자동 복사됨. `glew32.dll` 은 직접 옆에 넣기.
+4. 제출용 Release 실행 파일은 `build/Release/` 에 생기고, 빌드 후 `shaders/`, `assets/`, `glew32.dll`(PATH 에서 찾음) 이 자동 복사됨.
+5. **제출용 배포 폴더**: 저장소 맨 위에서 PowerShell 로 `.\tools\MakeRelease.ps1` → `dist\ZeroBrake\` 폴더와 `dist\ZeroBrake.zip` 생성 (Release 빌드 + 리소스 + DLL + 실행방법.txt)
 
 ### 조작
 
@@ -54,7 +55,8 @@ ZeroBrake/
    ├─ race/AIDriver.*               진우석  AI 경로 주행
    ├─ race/Ghost.*                  진우석  최고 랩 기록·고스트 재생
    ├─ render/Lighting.*             진우석  조명
-   ├─ render/Texture.*              진우석  텍스처
+   ├─ render/Texture.*              진우석  텍스처 (도로·잔디·체커·연석·건물 창문)
+   ├─ render/Particles.*            진우석  부스트 배기 불꽃·연기, 드리프트 타이어 연기
    │
    ├─ vehicle/CarModel.*            유현조  차량 3종 외형
    ├─ vehicle/CarAbility.*          유현조  핸드브레이크·부스트
@@ -62,7 +64,9 @@ ZeroBrake/
    ├─ world/Scenery.*               유현조  배경
    ├─ view/Camera.*                 유현조  추적·1인칭·미러·미니맵 카메라
    ├─ view/Viewports.*              유현조  다중 뷰포트
-   └─ ui/SevenSeg.* Hud.* Screens.* 유현조  7세그먼트 글자, HUD, 타이틀·선택·결과 화면
+   └─ ui/SevenSeg.* Hud.* Screens.* BitmapText.*  유현조  7세그먼트 숫자, 한글 글자, HUD, 타이틀·선택·결과 화면
+tests/                              자동 검사 (tests/README.md)
+tools/MakeRelease.ps1               제출용 배포 폴더·zip 만들기
 ```
 
 ### 모듈이 연결되는 방식
@@ -72,7 +76,7 @@ ZeroBrake/
 ```
 UpdateRace:  AIDriver_Think → CarAbility_Update → CarPhysics_Update     (차량 이동)
              → Collision_Update → RaceRules_Update → Ghost_Update → Camera_Update
-Draw:        Viewports_Draw ─┬─ World_Draw(메인)   = Lighting → Scenery → Track → CarModel → Ghost
+Draw:        Viewports_Draw ─┬─ World_Draw(메인)   = Lighting → Scenery → Track → CarModel → Ghost → Particles
                              ├─ World_Draw(미러)
                              └─ World_Draw(미니맵)
              → Hud_DrawRace / Screens_Draw...

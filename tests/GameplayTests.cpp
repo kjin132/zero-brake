@@ -83,6 +83,12 @@ static void RulesTests()
     Check(!RaceRules_IsOver(g), "waits while other cars still racing");
     for (int i = 1; i < g.carCount; ++i) g.cars[i].finished = true;
     Check(RaceRules_IsOver(g) && g.race.finishCountdown > 5.0f, "all cars finished ends race immediately");
+    // 고스트: 첫 랩에는 없고, 2랩부터 직전 랩을 재생
+    g = Gates(); g.settings.laps = 3;
+    StepTo(g, {0,0,2}); StepTo(g, {0,0,5});
+    Check(!Ghost_Visible(), "no ghost on first lap");
+    StepTo(g, {0,0,12}); StepTo(g, {0,0,22}); StepTo(g, {0,0,-2}); StepTo(g, {0,0,2}); StepTo(g, {0,0,5});
+    Check(Ghost_Visible(), "previous lap ghost from second lap");
 }
 static void AbilityTests()
 {

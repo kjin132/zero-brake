@@ -1,4 +1,5 @@
-﻿// 맵/차종별 최고 랩을 저장하고 다음 경기에도 같은 시간축으로 재생한다.
+﻿// 맵/차종별 최고 랩 시간은 파일에 저장(HUD '최고'), 고스트는 이번 경기의 바로 이전 랩을 재생한다.
+// 첫 랩에는 고스트 없음, 2랩부터 직전 랩이 같은 시간축으로 같이 달림.
 #include "race/Ghost.h"
 #include "vehicle/CarModel.h"
 #include <array>
@@ -11,6 +12,7 @@ struct Sample { float t; glm::vec3 pos; float yaw; };
 struct Record { float time = 0; std::vector<Sample> samples; };
 std::array<Record, 6> sRecords;
 std::vector<Sample> sRecording;
+std::vector<Sample> sPrevLap;      // 이번 경기 직전 랩 (고스트로 재생)
 int sKey = 0;
 bool sLoaded = false, sVisible = false, sValid = true;
 float sSampleTimer = 0, sYaw = 0;
@@ -78,7 +80,7 @@ float Ghost_BestTime(int mapId, CarType type) { Load(); return sRecords[Key(mapI
 void Ghost_StartRace(Game& g)
 {
 	Load(); sKey = Key(g.settings.mapId, g.settings.playerCar);
-	sRecording.clear(); sVisible = false; sSampleTimer = 0; sValid = true;
+	sRecording.clear(); sPrevLap.clear(); sVisible = false; sSampleTimer = 0; sValid = true;
 }
 void Ghost_BeginLap(const Game& g)
 {
@@ -98,7 +100,7 @@ void Ghost_Update(Game& g, float dt)
 		sSampleTimer = std::fmod(sSampleTimer, 0.05f);
 		sRecording.push_back({ t, p.pos, p.yaw });
 	}
-	const auto& best = sRecords[sKey].samples;
+	const auto& best = sPrevLap;
 	if (best.size() < 2 || t > best.back().t) return;
 	auto next = std::upper_bound(best.begin(), best.end(), t, [](float time, const Sample& s) { return time < s.t; });
 	if (next == best.begin()) return;
@@ -111,9 +113,11 @@ void Ghost_Update(Game& g, float dt)
 }
 void Ghost_OnPlayerLap(Game& g, float lapTime)
 {
+	sPrevLap.clear();                    // 리스폰 등으로 망가진 랩이면 다음 랩엔 고스트 없음
 	if (sValid && !sRecording.empty() && lapTime > sRecording.back().t && g.race.time <= g.settings.timeLimit)
 	{
 		sRecording.push_back({ lapTime, g.cars[0].pos, g.cars[0].yaw });
+		sPrevLap = sRecording;
 		Record& best = sRecords[sKey];
 		if (best.time == 0 || lapTime < best.time)
 		{
@@ -122,6 +126,7 @@ void Ghost_OnPlayerLap(Game& g, float lapTime)
 	}
 	Ghost_BeginLap(g);
 }
+bool Ghost_Visible() { return sVisible; }
 void Ghost_Draw(const Game& g)
 {
 	if (!sVisible) return;

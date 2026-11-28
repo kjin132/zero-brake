@@ -135,5 +135,14 @@ void RaceRules_Respawn(Game& g, Car& c)
 	for (int i = 0; i < g.carCount; ++i) if (&g.cars[i] == &c) sPrevious[i] = c.pos;
 	if (c.isPlayer) Ghost_InvalidateLap();
 }
-// 플레이어가 결승선을 통과하면 FINISH_WAIT 초 동안 다른 차가 계속 달린 뒤 결과 화면으로
-bool RaceRules_IsOver(const Game& g) { return (g.race.playerFinished && g.race.finishCountdown <= 0.0f) || g.race.timeOver; }
+// 플레이어가 결승선을 통과하면 FINISH_WAIT 초 동안 다른 차가 계속 달린 뒤 결과 화면으로.
+// 그 전에 모든 차가 들어오면 남은 시간을 기다리지 않고 바로 결과 화면
+bool RaceRules_IsOver(const Game& g)
+{
+	if (g.race.timeOver) return true;
+	if (!g.race.playerFinished) return false;
+	if (g.race.finishCountdown <= 0.0f) return true;
+	for (int i = 0; i < g.carCount; ++i)
+		if (g.cars[i].active && !g.cars[i].finished) return false;
+	return true;
+}

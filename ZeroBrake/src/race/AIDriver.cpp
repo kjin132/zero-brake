@@ -224,7 +224,11 @@ CarInput AIDriver_Think(const Game& g, Car& car, float dt)
 		else if (leftOk) b.passLat = b.lo;
 		else if (rightOk) b.passLat = b.hi;
 		else b.canPass = false;
+		bool standing = otherSpeed < 3.0f;                         // 장애물·멈춘 차
 		if (!b.canPass) followSpeed = std::min(followSpeed, otherSpeed + std::max(0.0f, ahead - CAR_GAP) * 0.8f);
+		else if (standing)
+			// 서 있는 것은 기다려도 안 비켜 줌 → 멈추지 말고 천천히(최소 6m/s) 옆으로 돌아 나감 (조향은 속도가 있어야 됨)
+			followSpeed = std::min(followSpeed, 6.0f + std::max(0.0f, ahead - 6.0f) * 1.2f);
 		else if (ahead < CAR_GAP + 3.0f && std::fabs(otherLat - myLat) < width * 0.5f + spec.size.x * 0.5f + 0.4f)
 			followSpeed = std::min(followSpeed, otherSpeed + std::max(0.0f, ahead - 4.5f) * 0.8f);   // 아직 못 비켰으면 들이받지 않게
 		blockers.push_back(b);
@@ -340,7 +344,9 @@ CarInput AIDriver_Think(const Game& g, Car& car, float dt)
 		in.steer = diff > 0.0f ? 1.0f : -1.0f;              // 후진 중엔 반대로 꺾어야 앞머리가 목표를 향함
 		return in;
 	}
+	// 엑셀을 밟는데 안 나가거나(벽·차에 막힘), 앞이 막혀 멈춰 있으면(브레이크 중이어도) 막힌 것으로 봄
 	if (!car.finished && in.throttle > 0.0f && std::fabs(speed) < 1.5f) st.stuckTimer += dt;
+	else if (!car.finished && std::fabs(speed) < 1.0f) st.stuckTimer += dt * 0.7f;
 	else st.stuckTimer = std::max(0.0f, st.stuckTimer - dt * 2.0f);
 	if (st.stuckTimer > 1.0f || (std::fabs(diff) > 2.2f && std::fabs(speed) < 4.0f))
 	{

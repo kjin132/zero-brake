@@ -126,7 +126,7 @@ void RaceRules_Respawn(Game& g, Car& c)
 			if (!blocked) { candidate = p; found = true; }
 		}
 	if (!found) return; // 빈자리가 없으면 기존 위치를 유지한다.
-	c.pos = candidate; c.yaw = c.safeYaw; c.speed = 0; c.slipAngle = 0; c.steerAngle = 0;
+	c.pos = candidate; c.yaw = c.safeYaw; c.speed = 0; c.slipAngle = 0; c.steerAngle = 0; c.bump = glm::vec3(0.0f);
 	c.handbrakeOn = false; c.boostTime = 0; c.padBoostTime = 0;
 	for (int i = 0; i < g.carCount; ++i) if (&g.cars[i] == &c) sPrevious[i] = c.pos;
 	if (c.isPlayer) Ghost_InvalidateLap();

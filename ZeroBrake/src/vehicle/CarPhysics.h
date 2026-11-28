@@ -10,3 +10,5 @@ void CarPhysics_Update(Car& car, const CarInput& in, float dt);
 glm::vec3 Car_Forward(const Car& car);   // 차 앞 방향 (월드)
 glm::vec3 Car_Right(const Car& car);     // 차 오른쪽 방향 (월드)
 glm::mat4 Car_Matrix(const Car& car);    // 차 위치·방향 행렬 (크기 없음) → CarModel·Camera 가 사용
+glm::vec3 Car_MoveDir(const Car& car);    // 실제로 움직이는 방향 (드리프트 미끄러짐 포함)
+glm::vec3 Car_Velocity(const Car& car);  // 실제 속도 벡터 = 진행 방향 × speed + 충돌 반동(bump)

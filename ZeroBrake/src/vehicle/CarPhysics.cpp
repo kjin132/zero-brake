@@ -16,6 +16,14 @@ glm::mat4 Car_Matrix(const Car& car)
 	return glm::rotate(m, car.yaw, glm::vec3(0, 1, 0));
 }
 
+glm::vec3 Car_MoveDir(const Car& car)
+{
+	float moveYaw = car.yaw + car.slipAngle;
+	return glm::vec3(std::sin(moveYaw), 0.0f, std::cos(moveYaw));
+}
+
+glm::vec3 Car_Velocity(const Car& car) { return Car_MoveDir(car) * car.speed + car.bump; }
+
 void CarPhysics_Reset(Car& car, const Track& track, int gridIndex)
 {
 	// 출발선 뒤로 2열 그리드: 0 1 / 2 3
@@ -30,6 +38,7 @@ void CarPhysics_Reset(Car& car, const Track& track, int gridIndex)
 	car.slipAngle = 0.0f;
 	car.steerAngle = 0.0f;
 	car.wheelSpin = 0.0f;
+	car.bump = glm::vec3(0.0f);
 	car.safePos = car.pos;
 	car.safeYaw = car.yaw;
 }
@@ -74,9 +83,10 @@ void CarPhysics_Update(Car& car, const CarInput& in, float dt)
 	float grip = s.grip * CarAbility_GripScale(car);
 	car.slipAngle = glm::mix(car.slipAngle, 0.0f, glm::clamp(grip * 6.0f * dt, 0.0f, 1.0f));
 
-	// --- 이동 ---
-	float moveYaw = car.yaw + car.slipAngle;
-	car.pos += glm::vec3(std::sin(moveYaw), 0.0f, std::cos(moveYaw)) * car.speed * dt;
+	// --- 이동 (충돌 반동 bump 도 더함 → 약 0.3초에 걸쳐 사라짐) ---
+	car.pos += (Car_MoveDir(car) * car.speed + car.bump) * dt;
+	car.bump *= std::exp(-3.5f * dt);
+	if (glm::length(car.bump) < 0.05f) car.bump = glm::vec3(0.0f);
 
 	// --- 바퀴 회전 (반지름 0.35m 기준) ---
 	car.wheelSpin += glm::degrees(car.speed * dt / 0.35f);

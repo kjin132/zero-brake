@@ -60,6 +60,7 @@ struct Car
 	float slipAngle = 0.0f;    // 드리프트 시 차체 방향과 진행 방향 차이 (라디안)
 	float steerAngle = 0.0f;   // 앞바퀴 조향각 (도) → CarModel 이 그릴 때 사용
 	float wheelSpin = 0.0f;    // 바퀴 회전각 (도)   → CarModel 이 그릴 때 사용
+	glm::vec3 bump = glm::vec3(0.0f);  // 충돌로 튕겨 나가는 속도 (m/s). Collision 이 넣고 CarPhysics 가 이동에 더한 뒤 서서히 줄임
 
 	// 특수 기능 [현조: CarAbility]
 	bool handbrakeOn = false;

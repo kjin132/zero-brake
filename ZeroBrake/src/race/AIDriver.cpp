@@ -1,17 +1,27 @@
 ﻿// =====================================================================================
 //  AI 경쟁차 주행
 //
-//  1) 레이싱 라인: 트랙마다 한 번, 중심선을 도로 폭 안에서 반복해서 펴서(라플라시안 스무딩)
-//     "바깥 → 안쪽(에이펙스) → 바깥"으로 도는 최소 곡률 경로를 만든다.
-//  2) 속도 계획: 이 게임 물리에서 차가 돌 수 있는 한계는 조향 속도(steerRate)다.
-//     반지름 R 커브의 최고 속도 ≈ 회전각속도 × R  → 차종마다 코너 속도가 다름.
-//     앞쪽 커브까지의 제동 거리를 계산해서 미리 감속한다.
-//  3) 조향: 속도에 비례해 앞을 보는 지점(퓨어 퍼슛)을 향해 필요한 회전량만큼 핸들을 꺾는다.
-//  4) 주변 차·장애물: 앞에 느린 차가 있으면 공간이 넓은 쪽으로 추월, 자리가 없으면 거리 유지.
-//  5) 막혔을 때: 거의 멈춘 채 1초가 지나면 후진하면서 방향을 돌려 빠져나온다.
-//  6) 부스트: 앞이 긴 직선이고 앞차가 없으면 Shift 부스트 사용.
+//  [레이싱 라인] 트랙마다 한 번 계산 (모든 AI 공유)
+//   - 중심선을 도로 폭 안에서 반복해서 펴서(라플라시안 스무딩) 곡률이 가장 작은 경로를 만든다
+//     → 자연스럽게 "바깥 → 안쪽(에이펙스) → 바깥"으로 코너를 돈다
+//   - 부스트 패드 위치에서는 라인을 패드 위로 고정 → 패드를 반드시 밟고 지나감
 //
-//  난이도 조절: 아래 kSkill (차 순서별 실력) 과 DIFFICULTY 숫자를 바꾸면 됨
+//  [속도 계획] 이 게임 물리에서 코너 한계는 "조향 속도"다 (CarPhysics: 회전각속도 = steerRate)
+//   - 반지름 R 커브의 최고 속도 = 회전각속도 × R   → 차종마다 코너 속도가 다름
+//   - 앞 130m 까지 각 지점의 코너 속도와 제동 거리로 "지금 낼 수 있는 최고 속도"를 계산
+//   - 부스트 중이면 최고 속도 1.25배까지 끝까지 밟음
+//
+//  [조향] ① 라인의 휘어짐만큼 미리 꺾기(피드포워드) ② 앞쪽 목표점 추적(퓨어 퍼슛)
+//         ③ 지금 옆 위치 오차 바로잡기
+//
+//  [부스트(Shift)] 게이지는 놀리면 손해 (안 쓸 때만 초당 0.08 충전)
+//   - 가속 중이고 다음 제동까지 시간이 충분하면 사용 → 코너 많은 맵에서도 코너 탈출마다 사용
+//   - 게이지가 거의 꽉 차면 무조건 사용 (충전이 버려지지 않게)
+//
+//  [주변 차·장애물] 앞에 느린 차가 라인을 막으면 넓은 쪽으로 추월, 자리가 없으면 거리 유지
+//  [막힘 탈출] 거의 멈춘 채 1초 → 후진하면서 방향을 돌려 빠져나옴
+//
+//  난이도: DIFFICULTY (전체), kSkill (AI 순서별)
 // =====================================================================================
 #include "race/AIDriver.h"
 #include "vehicle/CarPhysics.h"
@@ -22,17 +32,19 @@
 namespace
 {
 // ---- 난이도 ----
-const float DIFFICULTY = 1.0f;                                // 전체 AI 실력 배율 (0.9 = 쉬움, 1.0 = 보통)
-const float kSkill[MAX_CARS] = { 1.0f, 0.97f, 0.94f, 0.91f };  // AI 1·2·3번째 차 실력 (속도·코너링 배율)
+const float DIFFICULTY = 1.0f;                                  // 전체 AI 실력 (0.9 = 쉬움, 1.0 = 최고)
+const float kSkill[MAX_CARS] = { 1.0f, 1.0f, 0.985f, 0.97f };   // [0]=플레이어 자리, AI 1·2·3번째 차
 
 // ---- 주행 상수 ----
-const float CORNER_MARGIN = 0.82f;   // 이론상 코너 한계 속도의 몇 %로 돌지 (작을수록 안전)
-const float BRAKE_USE = 0.8f;        // 제동력의 몇 %를 계획에 쓸지
-const float LOOK_AHEAD_MIN = 6.0f, LOOK_AHEAD_MAX = 20.0f;
-const float CAR_GAP = 7.0f;          // 앞차와 유지할 거리 (m)
+const float CORNER_MARGIN = 0.92f;   // 이론상 코너 한계 속도의 몇 %로 돌지
+const float BRAKE_USE = 0.92f;       // 제동력의 몇 %를 계획에 쓸지
+const float EDGE_GAP = 2.3f;         // 레이싱 라인이 도로 가장자리에서 떨어지는 거리 (차 중심 기준, m)
+const float PLAN_DIST = 130.0f;      // 속도 계획을 위해 앞을 보는 거리 (m)
+const float CAR_GAP = 7.0f;          // 따라갈 때 앞차와 유지할 거리 (m)
 const float LAT_GAIN = 0.12f;        // 옆 위치 오차 1m 당 추가 조향량
+const float BOOST_SCALE = 1.25f;     // 부스트 중 최고 속도 배율 (CarAbility 와 같게)
 
-// ---- 레이싱 라인 (트랙마다 1개, 모든 AI 공유) ----
+// ---- 레이싱 라인 ----
 struct RacingLine
 {
 	int mapId = -1;
@@ -41,12 +53,13 @@ struct RacingLine
 	std::vector<glm::vec3> pts;      // 레이싱 라인 점 (중심선 점과 1:1)
 	std::vector<glm::vec3> right;    // 각 중심선 점의 오른쪽 방향
 	std::vector<float> offset;       // 중심선에서 레이싱 라인까지 옆 거리 (오른쪽 +)
-	std::vector<float> radius;       // 레이싱 라인 곡률 반지름 (m)
+	std::vector<float> radius;       // 곡률 반지름 (m)
+	std::vector<float> turn;         // 부호 있는 곡률 (1/m, 왼쪽으로 돌면 +)
 	std::vector<float> spacing;      // 다음 점까지 거리
+	std::vector<char> pinned;        // 패드 위로 고정된 점
 };
 RacingLine sLine;
 
-// ---- 차마다 기억하는 상태 ----
 struct AIState
 {
 	int index = 0;             // 마지막으로 찾은 중심선 점 번호
@@ -73,22 +86,37 @@ void BuildLine(const Track& t)
 	int n = (int)c.size();
 	sLine = RacingLine();
 	sLine.mapId = t.mapId; sLine.count = c.size(); sLine.first = c[0];
-	sLine.right.resize(n); sLine.offset.assign(n, 0.0f); sLine.pts = c;
+	sLine.right.resize(n); sLine.offset.assign(n, 0.0f); sLine.pts = c; sLine.pinned.assign(n, 0);
 	for (int i = 0; i < n; i++) { glm::vec3 tg = TangentAt(c, i); sLine.right[i] = glm::vec3(-tg.z, 0, tg.x); }
 
-	// 반복 스무딩: 각 점을 양옆 점의 중간으로 당기되, 도로 폭 안(가장자리 여유 2.4m)에서만
-	const float limit = t.roadWidth * 0.5f - 2.4f;
-	for (int iter = 0; iter < 400; iter++)
+	// 부스트 패드: 가장 가까운 중심선 점 앞뒤 몇 칸을 패드 위치로 고정
+	for (const glm::vec3& pad : t.boostPads)
+	{
+		int p = Track_NearestIndex(t, pad);
+		float lat = glm::dot(pad - c[p], sLine.right[p]);
+		for (int k = -2; k <= 2; k++)
+		{
+			int i = (p + k + n) % n;
+			sLine.pinned[i] = 1;
+			sLine.offset[i] = lat;
+			sLine.pts[i] = c[i] + sLine.right[i] * lat;
+		}
+	}
+
+	// 반복 스무딩: 각 점을 양옆 점의 중간으로 당기되 도로 폭 안에서만
+	const float limit = t.roadWidth * 0.5f - EDGE_GAP;
+	for (int iter = 0; iter < 600; iter++)
 		for (int i = 0; i < n; i++)
 		{
+			if (sLine.pinned[i]) continue;
 			glm::vec3 mid = (sLine.pts[(i - 1 + n) % n] + sLine.pts[(i + 1) % n]) * 0.5f;
 			float want = glm::dot(mid - c[i], sLine.right[i]);
 			sLine.offset[i] = glm::clamp(glm::mix(sLine.offset[i], want, 0.6f), -limit, limit);
 			sLine.pts[i] = c[i] + sLine.right[i] * sLine.offset[i];
 		}
 
-	// 곡률 반지름: 앞뒤 약 6m 떨어진 점 3개로 원을 그려 계산
-	sLine.spacing.resize(n); sLine.radius.resize(n);
+	// 곡률: 앞뒤 약 6m 떨어진 점 3개를 지나는 원
+	sLine.spacing.resize(n); sLine.radius.resize(n); sLine.turn.resize(n);
 	float avg = 0.0f;
 	for (int i = 0; i < n; i++) { sLine.spacing[i] = glm::length(sLine.pts[(i + 1) % n] - sLine.pts[i]); avg += sLine.spacing[i]; }
 	avg /= n;
@@ -97,12 +125,12 @@ void BuildLine(const Track& t)
 	{
 		glm::vec3 a = sLine.pts[(i - k + n) % n], b = sLine.pts[i], d = sLine.pts[(i + k) % n];
 		float ab = glm::length(b - a), bd = glm::length(d - b), ad = glm::length(d - a);
-		glm::vec3 cr = glm::cross(b - a, d - a);
-		float area2 = std::fabs(cr.y);                       // 삼각형 넓이 × 2
-		sLine.radius[i] = area2 < 1e-4f ? 1e4f : (ab * bd * ad) / (2.0f * area2);
+		float cr = glm::cross(b - a, d - a).y;                  // 부호 = 회전 방향
+		float r = std::fabs(cr) < 1e-4f ? 1e4f : (ab * bd * ad) / (2.0f * std::fabs(cr));
+		sLine.radius[i] = r;
+		sLine.turn[i] = (cr > 0 ? 1.0f : -1.0f) / r;           // +: 왼쪽(yaw 증가) 회전 (진행 +z 에서 왼쪽 = +x)
 	}
-	// 반지름은 주변 최솟값으로 (짧은 급커브를 놓치지 않게)
-	std::vector<float> r = sLine.radius;
+	std::vector<float> r = sLine.radius;                        // 짧은 급커브를 놓치지 않게 주변 최솟값
 	for (int i = 0; i < n; i++)
 		for (int j = -k; j <= k; j++) sLine.radius[i] = std::min(sLine.radius[i], r[(i + j + n) % n]);
 }
@@ -113,7 +141,7 @@ void EnsureLine(const Track& t)
 	if (sLine.mapId != t.mapId || sLine.count != t.center.size() || sLine.first != t.center[0]) BuildLine(t);
 }
 
-// 지난번 위치 근처에서만 가장 가까운 점을 찾음 (트랙이 가까이 지나가는 곳에서 엉뚱한 구간을 잡지 않게)
+// 지난번 위치 근처에서만 가장 가까운 점 (트랙이 가까이 지나가는 곳에서 엉뚱한 구간을 잡지 않게)
 int LocalNearest(const Track& t, glm::vec3 p, int hint)
 {
 	int n = (int)t.center.size();
@@ -124,13 +152,12 @@ int LocalNearest(const Track& t, glm::vec3 p, int hint)
 		glm::vec3 d = t.center[i] - p; float dd = d.x * d.x + d.z * d.z;
 		if (dd < bestD) { bestD = dd; best = i; }
 	}
-	if (bestD > t.roadWidth * t.roadWidth * 2.0f) best = Track_NearestIndex(t, p);   // 너무 멀면 전체 검색 (복귀 직후 등)
+	if (bestD > t.roadWidth * t.roadWidth * 2.0f) best = Track_NearestIndex(t, p);
 	return best;
 }
 
 float Lateral(const Track& t, int i, glm::vec3 p) { return glm::dot(p - t.center[i], sLine.right[i]); }
 
-// 앞쪽으로 dist(m) 만큼 떨어진 점 번호
 int Advance(int i, float dist, float* travelled = nullptr)
 {
 	int n = (int)sLine.pts.size(); float d = 0.0f; int j = i;
@@ -147,7 +174,7 @@ void AIDriver_Init(Game& g, Car& car, int index)
 	car.aiTarget = Track_NearestIndex(g.track, car.pos);
 	AIState s;
 	s.index = car.aiTarget;
-	s.bias = (index % 2 == 0 ? 0.5f : -0.5f) * (1.0f - car.aiSkill) * 6.0f;   // 실력이 낮을수록 라인이 조금 어긋남
+	s.bias = (index % 2 == 0 ? 0.3f : -0.3f) * (1.0f - car.aiSkill) * 10.0f;   // 실력이 낮을수록 라인이 조금 어긋남
 	sState[&car] = s;
 }
 
@@ -161,33 +188,34 @@ CarInput AIDriver_Think(const Game& g, Car& car, float dt)
 	AIState& st = sState[&car];
 	const CarSpec& spec = CarSpec_Get(car.type);
 	const float omega = glm::radians(spec.steerRate);            // 최대 회전 각속도 (rad/s)
-	const float halfRoad = t.roadWidth * 0.5f - spec.size.x * 0.5f - 1.0f;   // 벽과 1m 여유
+	const float halfRoad = t.roadWidth * 0.5f - spec.size.x * 0.5f - 0.7f;
 
 	int idx = LocalNearest(t, car.pos, st.index);
 	st.index = idx; car.aiTarget = idx;
-	float speed = car.speed;
-	glm::vec3 fwd = Car_Forward(car);
+	const float speed = car.speed;
+	const glm::vec3 fwd = Car_Forward(car);
+	const glm::vec3 tangentHere = TangentAt(t.center, idx);
+	const float myLat = Lateral(t, idx, car.pos);
 
-	// ---------------- 주변 차·장애물 찾기 ----------------
-	// "막는 물체" = 앞 38m 안에서 내 레이싱 라인과 겹치는 차·장애물.
-	// 그 물체 근처 구간에서만 옆으로 비켜 지나가고(추월), 비킬 자리가 없으면 속도를 맞춰 따라감
+	// ---------------- 주변 차·장애물 ----------------
 	struct Blocker { float ahead; float lo, hi; float passLat; bool canPass; };
 	std::vector<Blocker> blockers;
 	float followSpeed = 1e9f, nearestAhead = 1e9f;
-	glm::vec3 tangentHere = TangentAt(t.center, idx);
-	float myLat = Lateral(t, idx, car.pos);
 	auto consider = [&](glm::vec3 pos, float otherSpeed, float width) {
 		glm::vec3 rel = pos - car.pos; rel.y = 0.0f;
+		if (glm::length(rel) > 42.0f) return;                      // 실제로 가까운 것만 (트랙 다른 구간 제외)
 		float ahead = glm::dot(rel, tangentHere);
-		if (ahead < 1.0f || ahead > 38.0f) return;
+		if (ahead < 1.0f || ahead > 40.0f) return;
 		if (speed - otherSpeed < -1.0f) return;                    // 앞차가 더 빠르면 신경 안 씀
 		otherSpeed = std::max(0.0f, otherSpeed);                   // 후진 중인 차를 따라 후진하지 않게
 		int oi = LocalNearest(t, pos, idx);
+		int along = (oi - idx + n) % n;                            // 트랙을 따라 앞쪽에 있는지
+		if (along > n / 4) return;
 		float otherLat = Lateral(t, oi, pos);
-		float need = width * 0.5f + spec.size.x * 0.5f + 1.3f;    // 중심끼리 이만큼 떨어져야 안 부딪힘 (추종 오차 여유 포함)
+		float need = width * 0.5f + spec.size.x * 0.5f + 1.2f;    // 중심끼리 이만큼 떨어져야 안전
 		float lineLat = sLine.offset[oi] + st.bias;
-		bool onLine = std::fabs(otherLat - lineLat) <= need;       // 계획한 라인과 겹침
-		bool onPath = std::fabs(otherLat - myLat) <= need;         // 지금 달리는 위치 그대로 가도 겹침
+		bool onLine = std::fabs(otherLat - lineLat) <= need;
+		bool onPath = std::fabs(otherLat - myLat) <= need;
 		if (!onLine && !onPath) return;
 		nearestAhead = std::min(nearestAhead, ahead);
 		Blocker b{ ahead, otherLat - need, otherLat + need, 0.0f, true };
@@ -197,9 +225,8 @@ CarInput AIDriver_Think(const Game& g, Car& car, float dt)
 		else if (rightOk) b.passLat = b.hi;
 		else b.canPass = false;
 		if (!b.canPass) followSpeed = std::min(followSpeed, otherSpeed + std::max(0.0f, ahead - CAR_GAP) * 0.8f);
-		// 추월 중이라도 아직 옆으로 다 비키지 못했으면 들이받지 않게 속도를 맞춤
 		else if (ahead < CAR_GAP + 3.0f && std::fabs(otherLat - myLat) < width * 0.5f + spec.size.x * 0.5f + 0.4f)
-			followSpeed = std::min(followSpeed, otherSpeed + std::max(0.0f, ahead - 4.5f) * 0.8f);
+			followSpeed = std::min(followSpeed, otherSpeed + std::max(0.0f, ahead - 4.5f) * 0.8f);   // 아직 못 비켰으면 들이받지 않게
 		blockers.push_back(b);
 	};
 	for (int i = 0; i < g.carCount; i++)
@@ -210,63 +237,79 @@ CarInput AIDriver_Think(const Game& g, Car& car, float dt)
 	}
 	for (const Obstacle& o : t.obstacles) consider(o.pos, 0.0f, std::max(o.size.x, o.size.z));
 
-	// 앞쪽 d(m) 지점에서 가야 할 옆 위치: 레이싱 라인, 단 막는 물체를 다 지나칠 때까지는 비켜 간 위치
-	// (조향 목표점이 물체보다 앞에 있어도 추월이 끝날 때까지 옆 위치 유지)
-	const float look = glm::clamp(4.0f + std::fabs(speed) * 0.35f, LOOK_AHEAD_MIN, LOOK_AHEAD_MAX);
+	const float look = glm::clamp(3.0f + std::fabs(speed) * 0.3f, 5.0f, 18.0f);
+	// 앞쪽 d(m) 지점에서 가야 할 옆 위치: 레이싱 라인, 막는 물체를 다 지나칠 때까지는 비켜 간 위치
 	auto laneAt = [&](int i, float d) {
-		float lat = sLine.offset[i] + st.bias;
+		float lat = sLine.offset[i] + (sLine.pinned[i] ? 0.0f : st.bias);
 		for (const Blocker& b : blockers)
 			if (b.canPass && d > b.ahead - 12.0f && d < b.ahead + 6.0f + look && lat > b.lo && lat < b.hi)
 				lat = b.passLat;
 		return glm::clamp(lat, -halfRoad, halfRoad);
 	};
-
-	// ---------------- 조향: 앞쪽 목표점 (퓨어 퍼슛) ----------------
-	float lookDist = 0.0f;
-	int ti = Advance(idx, look, &lookDist);
-	float targetLat = laneAt(ti, lookDist);
-	glm::vec3 target = t.center[ti] + sLine.right[ti] * targetLat;
-	glm::vec3 delta = target - car.pos;
-	float diff = WrapAngle(std::atan2(delta.x, delta.z) - car.yaw);
-	float curvature = 2.0f * std::sin(diff) / std::max(2.0f, glm::length(delta));    // 목표점까지 원호의 곡률
-	float speedFactor = glm::clamp(std::fabs(speed) / 8.0f, 0.15f, 1.0f);
-	float steer = -speed * curvature / (omega * speedFactor);
-	// 지금 위치가 가야 할 옆 위치에서 벗어난 만큼 바로잡기 (멀리 있는 목표점만 보면 옆으로 흘러감)
-	float latError = myLat - laneAt(idx, 0.0f);          // + 면 너무 오른쪽
-	if (speed > 5.0f) steer -= glm::clamp(latError * LAT_GAIN, -0.35f, 0.35f);   // 오른쪽으로 벗어나면 왼쪽(-)으로
-	in.steer = glm::clamp(steer, -1.0f, 1.0f);
-	if (std::fabs(speed) < 2.0f) in.steer = glm::clamp(-diff * 2.0f, -1.0f, 1.0f);
-	// 피해 가는 중이면 라인 밖(더 급한 커브)을 달리므로 코너를 더 천천히
 	bool avoiding = false;
 	for (const Blocker& b : blockers) if (b.canPass) avoiding = true;
-	float cornerScale = avoiding ? 0.8f : 1.0f;
+
+	// ---------------- 조향 ----------------
+	float lookDist = 0.0f;
+	int ti = Advance(idx, look, &lookDist);
+	glm::vec3 target = t.center[ti] + sLine.right[ti] * laneAt(ti, lookDist);
+	glm::vec3 delta = target - car.pos;
+	float diff = WrapAngle(std::atan2(delta.x, delta.z) - car.yaw);
+	float speedFactor = glm::clamp(std::fabs(speed) / 8.0f, 0.15f, 1.0f);
+	float yawRateMax = omega * speedFactor;
+	// ① 피드포워드: 앞쪽 라인 곡률만큼 미리 꺾음 (피할 때는 절반만)
+	int fi = Advance(idx, std::fabs(speed) * 0.15f);
+	float ffWeight = avoiding ? 0.5f : 1.0f;
+	float pathTurn = (sLine.turn[idx] + sLine.turn[fi]) * 0.5f * ffWeight;
+	float steer = -(speed * pathTurn) / yawRateMax;
+	// ② 퓨어 퍼슛: 목표점까지 원호 곡률에서 피드포워드 몫을 뺀 나머지
+	float pursuitTurn = 2.0f * std::sin(diff) / std::max(2.0f, glm::length(delta));
+	steer += -(speed * (pursuitTurn - pathTurn)) / yawRateMax * 0.8f;
+	// ③ 지금 옆 위치 오차
+	float latError = myLat - laneAt(idx, 0.0f);                // + 면 너무 오른쪽
+	if (speed > 5.0f) steer -= glm::clamp(latError * LAT_GAIN, -0.35f, 0.35f);
+	in.steer = glm::clamp(steer, -1.0f, 1.0f);
+	if (std::fabs(speed) < 2.0f) in.steer = glm::clamp(-diff * 2.0f, -1.0f, 1.0f);
 
 	// ---------------- 속도 계획 ----------------
-	float maxSpeed = spec.maxSpeed * car.aiSkill;
-	float desired = maxSpeed;
-	float travelled = 0.0f;
-	for (int j = idx, steps = 0; travelled < 110.0f && steps < n; steps++)
+	const float baseMax = spec.maxSpeed * car.aiSkill;
+	const bool boosted = car.boostTime > 0.0f || st.boosting;
+	const float topSpeed = baseMax * (boosted ? BOOST_SCALE : 1.0f);   // 부스트 중엔 1.25배까지 밟음
+	const float cornerScale = avoiding ? 0.82f : 1.0f;
+	const float brakeA = spec.brake * BRAKE_USE;
+	float desired = topSpeed;
+	float travelled = 0.0f, brakeDist = 1e9f;
+	for (int j = idx, steps = 0; travelled < PLAN_DIST && steps < n; steps++)
 	{
-		float corner = omega * sLine.radius[j] * CORNER_MARGIN * cornerScale * car.aiSkill;   // 이 지점에서 돌 수 있는 속도
-		float allowed = std::sqrt(corner * corner + 2.0f * spec.brake * BRAKE_USE * std::max(0.0f, travelled - 3.0f));
+		float corner = omega * sLine.radius[j] * CORNER_MARGIN * cornerScale * car.aiSkill;
+		float allowed = std::sqrt(corner * corner + 2.0f * brakeA * std::max(0.0f, travelled - 2.0f));
 		desired = std::min(desired, allowed);
+		// 지금 속도로 계속 가면 몇 m 뒤에 브레이크를 밟아야 하는지 (부스트 판단용)
+		if (brakeDist > 1e8f && corner < speed)
+			brakeDist = std::max(0.0f, travelled - (speed * speed - corner * corner) / (2.0f * brakeA));
 		travelled += sLine.spacing[j];
 		j = (j + 1) % n;
 	}
-	bool straightAhead = desired >= maxSpeed * 0.98f;
 	desired = std::min(desired, followSpeed);
 	if (std::fabs(diff) > 0.9f) desired = std::min(desired, 10.0f);   // 크게 틀어졌으면 천천히
 
 	in.throttle = speed < desired ? 1.0f : 0.0f;
-	in.brake = speed > desired + 0.8f ? glm::clamp((speed - desired) / 6.0f, 0.0f, 1.0f) : 0.0f;
+	in.brake = speed > desired + 0.5f ? glm::clamp((speed - desired) / 4.0f, 0.0f, 1.0f) : 0.0f;
 
-	// ---------------- 부스트: 긴 직선 + 앞이 비었을 때 ----------------
-	if (car.boostGauge <= 0.02f) st.boosting = false;
-	else if (straightAhead && nearestAhead > 30.0f && speed > maxSpeed * 0.6f && car.boostGauge > 0.5f) st.boosting = true;
-	if (!straightAhead || nearestAhead < 15.0f) st.boosting = false;
-	in.boost = st.boosting;
+	// ---------------- 부스트 (Shift) ----------------
+	{
+		float timeToBrake = brakeDist / std::max(1.0f, speed);
+		bool accelerating = in.throttle > 0.0f && speed < topSpeed - 0.5f && speed > 6.0f;
+		bool roomAhead = nearestAhead > 12.0f || avoiding;
+		bool worth = accelerating && roomAhead && timeToBrake > 0.7f && car.padBoostTime <= 0.0f;
+		if (car.boostGauge <= 0.02f) st.boosting = false;                         // 다 쓰면 한 번 떼야 다시 됨
+		else if (worth && (car.boostGauge > 0.3f || st.boosting)) st.boosting = true;
+		else if (worth && car.boostGauge > 0.95f) st.boosting = true;            // 꽉 차면 버리지 말고 사용
+		else st.boosting = false;
+		in.boost = st.boosting;
+	}
 
-	// ---------------- 막혔을 때 탈출 (후진하며 방향 돌리기) ----------------
+	// ---------------- 막혔을 때 탈출 ----------------
 	if (st.reverseTimer > 0.0f)
 	{
 		st.reverseTimer -= dt;
@@ -275,8 +318,7 @@ CarInput AIDriver_Think(const Game& g, Car& car, float dt)
 		in.steer = diff > 0.0f ? 1.0f : -1.0f;              // 후진 중엔 반대로 꺾어야 앞머리가 목표를 향함
 		return in;
 	}
-	bool tryingToMove = in.throttle > 0.0f;
-	if (!car.finished && tryingToMove && std::fabs(speed) < 1.5f) st.stuckTimer += dt;
+	if (!car.finished && in.throttle > 0.0f && std::fabs(speed) < 1.5f) st.stuckTimer += dt;
 	else st.stuckTimer = std::max(0.0f, st.stuckTimer - dt * 2.0f);
 	if (st.stuckTimer > 1.0f || (std::fabs(diff) > 2.2f && std::fabs(speed) < 4.0f))
 	{

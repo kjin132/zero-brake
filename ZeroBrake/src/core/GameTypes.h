@@ -127,6 +127,7 @@ struct RaceInfo
 	float bestLap = 0.0f;     // 0 = 기록 없음
 	bool timeOver = false;
 	bool playerFinished = false;
+	float finishCountdown = 0.0f;  // 플레이어 완주 후 결과 화면까지 남은 시간 (초). 이 동안 AI 는 계속 달림
 };
 
 constexpr int MAX_CARS = 4;   // 플레이어 1 + AI 최대 3

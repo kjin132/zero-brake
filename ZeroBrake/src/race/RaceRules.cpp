@@ -5,6 +5,8 @@
 #include "vehicle/CarSpecs.h"
 #include "world/Track.h"
 
+static const float FINISH_WAIT = 10.0f;   // 플레이어 완주 후 결과 화면까지 기다리는 시간 (초)
+
 static glm::vec3 sPrevious[MAX_CARS];
 static float SideOf(const Checkpoint& cp, glm::vec3 p) { return glm::dot(p - cp.pos, cp.forward); }
 static bool Crossed(const Checkpoint& cp, glm::vec3 from, glm::vec3 to)
@@ -61,7 +63,7 @@ static void OnCheckpoint(Game& g, int index)
 			if (c.lap >= g.settings.laps)
 			{
 				c.finished = true; c.finishTime = g.race.time;
-				if (c.isPlayer) g.race.playerFinished = true;
+				if (c.isPlayer) { g.race.playerFinished = true; g.race.finishCountdown = FINISH_WAIT; }
 			}
 		}
 	}
@@ -69,6 +71,7 @@ static void OnCheckpoint(Game& g, int index)
 }
 void RaceRules_Update(Game& g, float dt)
 {
+	if (g.race.playerFinished) g.race.finishCountdown = std::max(0.0f, g.race.finishCountdown - dt);
 	g.race.time += dt;
 	const Track& t = g.track;
 	if (t.checkpoints.empty()) return;
@@ -100,7 +103,8 @@ void RaceRules_Update(Game& g, float dt)
 		}
 	}
 	// 제한 시각과 같은 스텝에 결승선을 통과해도 제한 초과를 성공으로 표시하지 않는다.
-	if (g.race.time > g.settings.timeLimit) { g.race.timeOver = true; g.race.playerFinished = false; }
+	// (완주 후 결과 대기 중에는 제한 시간이 지나도 완주를 취소하지 않음)
+	if (!g.race.playerFinished && g.race.time > g.settings.timeLimit) { g.race.timeOver = true; g.race.playerFinished = false; }
 }
 void RaceRules_Respawn(Game& g, Car& c)
 {
@@ -131,4 +135,5 @@ void RaceRules_Respawn(Game& g, Car& c)
 	for (int i = 0; i < g.carCount; ++i) if (&g.cars[i] == &c) sPrevious[i] = c.pos;
 	if (c.isPlayer) Ghost_InvalidateLap();
 }
-bool RaceRules_IsOver(const Game& g) { return g.race.playerFinished || g.race.timeOver; }
+// 플레이어가 결승선을 통과하면 FINISH_WAIT 초 동안 다른 차가 계속 달린 뒤 결과 화면으로
+bool RaceRules_IsOver(const Game& g) { return (g.race.playerFinished && g.race.finishCountdown <= 0.0f) || g.race.timeOver; }

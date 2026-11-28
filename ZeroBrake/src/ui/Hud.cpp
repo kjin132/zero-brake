@@ -78,5 +78,15 @@ void Hud_DrawRace(const Game& g)
 	if (p.handbrakeOn) Text_Draw(540, 610, "드리프트", 23, gold);
 	if (g.state == GameState::Race && g.race.time < 1.0f)
 		Text_Draw((1280 - Text_Width("출발!", 70)) * 0.5f, 280, "출발!", 70, cyan);
+	// 완주 후 결과 화면까지 카운트다운 (그동안 다른 차들은 계속 달림)
+	if (g.race.playerFinished && g.race.finishCountdown > 0.0f)
+	{
+		std::string title = p.rank == 1 ? "우승!" : "완주! " + std::to_string(p.rank) + "위";
+		std::string sec = std::to_string((int)std::ceil(g.race.finishCountdown));
+		Hud_Rect(440, 150, 400, 170, panel); Hud_Rect(440, 150, 400, 4, gold);
+		Text_Draw((1280 - Text_Width(title, 46)) * 0.5f, 168, title, 46, gold);
+		SevenSeg_Text((1280 - SevenSeg_TextWidth(sec, 56)) * 0.5f, 226, sec, 56, white);
+		Text_Draw((1280 - Text_Width("초 후 결과 화면", 18)) * 0.5f, 292, "초 후 결과 화면", 18, cyan);
+	}
 	Hud_End();
 }

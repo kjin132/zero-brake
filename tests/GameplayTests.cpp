@@ -68,6 +68,15 @@ static void RulesTests()
     RaceRules_Update(g, 0.01f);
     for (int i = 0; i < 240; ++i) { CarAbility_Update(g.cars[0], {}, 0.01f); RaceRules_Update(g, 0.01f); }
     Check(g.cars[0].boostTime == 0, "standing on pad cannot refresh boost indefinitely");
+    // 완주 후 10초 동안은 결과 화면으로 넘어가지 않음 (그동안 제한 시간이 지나도 완주 유지)
+    g = Gates(); g.settings.laps = 1;
+    StepTo(g, {0,0,2}); StepTo(g, {0,0,12}); StepTo(g, {0,0,22}); StepTo(g, {0,0,-2}); StepTo(g, {0,0,2});
+    Check(g.race.playerFinished && !RaceRules_IsOver(g), "finish starts 10 second wait");
+    g.settings.timeLimit = g.race.time + 1.0f;
+    for (int i = 0; i < 95; ++i) RaceRules_Update(g, 0.1f);
+    Check(!RaceRules_IsOver(g) && !g.race.timeOver, "race continues during finish wait");
+    for (int i = 0; i < 10; ++i) RaceRules_Update(g, 0.1f);
+    Check(RaceRules_IsOver(g) && g.race.playerFinished, "results after finish wait");
 }
 static void AbilityTests()
 {

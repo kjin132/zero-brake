@@ -36,7 +36,7 @@ const float DIFFICULTY = 1.0f;                                  // 전체 AI 실
 const float kSkill[MAX_CARS] = { 1.0f, 1.0f, 0.985f, 0.97f };   // [0]=플레이어 자리, AI 1·2·3번째 차
 
 // ---- 주행 상수 ----
-const float CORNER_MARGIN = 0.92f;   // 이론상 코너 한계 속도의 몇 %로 돌지
+const float CORNER_MARGIN = 3.0f;    // 코너 한계 속도 배율. 측정 결과 이 게임은 코너에서 거의 감속 안 하는 게 가장 빠름 (아주 급한 곳만 감속)
 const float BRAKE_USE = 0.92f;       // 제동력의 몇 %를 계획에 쓸지
 const float EDGE_GAP = 2.3f;         // 레이싱 라인이 도로 가장자리에서 떨어지는 거리 (차 중심 기준, m)
 const float PLAN_DIST = 130.0f;      // 속도 계획을 위해 앞을 보는 거리 (m)
@@ -237,6 +237,27 @@ CarInput AIDriver_Think(const Game& g, Car& car, float dt)
 	}
 	for (const Obstacle& o : t.obstacles) consider(o.pos, 0.0f, std::max(o.size.x, o.size.z));
 
+	// ---------------- 바로 옆 차 (나란히 달릴 때) ----------------
+	// 옆에 차가 있으면 그쪽으로는 비켜 갈 수 없게 옆 위치의 범위를 좁힘
+	// (출발 그리드처럼 나란히 서 있을 때 레이싱 라인으로 끼어들다 옆 차를 들이받지 않게)
+	float latMin = -1e9f, latMax = 1e9f;
+	for (int i = 0; i < g.carCount; i++)
+	{
+		const Car& o = g.cars[i];
+		if (&o == &car || !o.active) continue;
+		glm::vec3 rel = o.pos - car.pos; rel.y = 0.0f;
+		if (glm::length(rel) > 14.0f) continue;
+		float alongside = glm::dot(rel, tangentHere);
+		const CarSpec& os = CarSpec_Get(o.type);
+		float reach = (spec.size.z + os.size.z) * 0.5f + 2.5f;      // 앞뒤로 이만큼 안이면 "옆"
+		if (std::fabs(alongside) > reach) continue;
+		float otherLat = Lateral(t, idx, o.pos);
+		float sep = (spec.size.x + os.size.x) * 0.5f + 1.4f;     // 옆 차와 이만큼(중심 기준) 떨어져 달림
+		if (otherLat > myLat) latMax = std::min(latMax, otherLat - sep);   // 오른쪽에 있음
+		else latMin = std::max(latMin, otherLat + sep);                   // 왼쪽에 있음
+	}
+	if (latMin > latMax) { float mid = (latMin + latMax) * 0.5f; latMin = latMax = mid; }   // 양옆이 막혔으면 가운데
+
 	const float look = glm::clamp(3.0f + std::fabs(speed) * 0.3f, 5.0f, 18.0f);
 	// 앞쪽 d(m) 지점에서 가야 할 옆 위치: 레이싱 라인, 막는 물체를 다 지나칠 때까지는 비켜 간 위치
 	auto laneAt = [&](int i, float d) {
@@ -244,7 +265,8 @@ CarInput AIDriver_Think(const Game& g, Car& car, float dt)
 		for (const Blocker& b : blockers)
 			if (b.canPass && d > b.ahead - 12.0f && d < b.ahead + 6.0f + look && lat > b.lo && lat < b.hi)
 				lat = b.passLat;
-		return glm::clamp(lat, -halfRoad, halfRoad);
+		lat = glm::clamp(lat, std::max(-halfRoad, std::min(latMin, halfRoad)), std::min(halfRoad, std::max(latMax, -halfRoad)));
+		return lat;
 	};
 	bool avoiding = false;
 	for (const Blocker& b : blockers) if (b.canPass) avoiding = true;

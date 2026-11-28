@@ -28,6 +28,7 @@
 #include "render/Texture.h"
 #include "render/Particles.h"
 #include "view/Camera.h"
+#include "ui/WindowBar.h"
 #include "view/Viewports.h"
 #include "ui/Hud.h"
 #include "ui/Screens.h"
@@ -127,6 +128,8 @@ static void UpdateRace(Game& g, float dt)
 void Game_Update(Game& g, float dt)
 {
 	if (Input_Pressed(GLFW_KEY_Q)) { g.quitRequested = true; return; }
+	WindowBar_Update(g.quitRequested);                   // 화면 위 창 버튼 (최소화/최대화/닫기)
+	if (g.quitRequested) return;
 
 	switch (g.state)
 	{
@@ -203,4 +206,5 @@ void Game_Draw(Game& g)
 		Screens_DrawResult(g);
 		break;
 	}
+	WindowBar_Draw();                                    // 창 버튼은 항상 맨 위
 }

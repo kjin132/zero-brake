@@ -26,6 +26,7 @@ int main()
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE);
 	glfwWindowHint(GLFW_SAMPLES, 4);
+	glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);   // 윈도우 기본 제목 표시줄 없음 → 화면 위 버튼(ui/WindowBar)
 
 	gWindow = glfwCreateWindow(gWidth, gHeight, "ZERO BRAKE", nullptr, nullptr);
 	if (!gWindow) { glfwTerminate(); return -1; }

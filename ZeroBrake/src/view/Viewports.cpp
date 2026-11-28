@@ -65,7 +65,8 @@ void Viewports_Draw(const Game& g)
 	if (g.showMinimap)
 	{
 		int s = gHeight * 30 / 100;
-		int x = gWidth - s - 12, y = gHeight - s - 12;
+		int top = 12 + gHeight * 34 / 720;               // 위쪽 창 버튼 밑으로
+		int x = gWidth - s - 12, y = gHeight - s - top;
 		ClearRegion(x - 3, y - 3, s + 6, s + 6, glm::vec3(0.1f));
 		ClearRegion(x, y, s, s, glm::vec3(0.2f, 0.3f, 0.2f));
 		glViewport(x, y, s, s);
